@@ -1,0 +1,11 @@
+import {createWebhookRelay} from '../apps/api/dist/webhook-relay.js';
+import {config} from 'dotenv';
+import {fileURLToPath} from 'node:url';
+config({path:fileURLToPath(new URL('../.env',import.meta.url))});
+const port=Number(process.env.HIVE_WEBHOOK_RELAY_PORT??3002);
+const apiPort=Number(process.env.PORT??3001);
+if(![port,apiPort].every(n=>Number.isInteger(n)&&n>0&&n<=65535)||port===apiPort)throw new Error('Use distinct valid API and webhook relay ports.');
+const relay=createWebhookRelay(`http://127.0.0.1:${apiPort}`);
+await new Promise((resolve,reject)=>{relay.once('error',reject);relay.listen(port,'127.0.0.1',resolve);});
+console.log(`Twilio callback relay listening at http://127.0.0.1:${port}/webhooks/twilio. Public ingress is not enabled by this command.`);
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>relay.close());

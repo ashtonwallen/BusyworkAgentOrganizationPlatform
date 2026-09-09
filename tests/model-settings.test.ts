@@ -1,0 +1,221 @@
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import { openDatabase, HiveService, createModels, one, Worker, Organization, recruitCandidates } from '../packages/runtime/src/index.js';
+import { MockProvider } from '../packages/providers/src/index.js';
+import { fitPrompt, estimatedInputTokens } from '../packages/runtime/src/prompt-capacity.js';
+
+let db: Awaited<ReturnType<typeof openDatabase>>;
+beforeEach(async () => { db = await openDatabase(); });
+afterEach(async () => { await db.close(); });
+const settings = { model: 'fixture-model', inputPerMillionUsd: '1', outputPerMillionUsd: '2', maxInputTokens: 16000, maxOutputTokens: 3000 };
+it('disables per-model caps persistently while retaining paid-call approval', async () => {
+  const models=createModels({OPENAI_API_KEY:'fixture'});
+  const service=new HiveService(db,models);
+  await service.configureModel('openai',{model:'gpt-5.6-terra'});
+  await service.configure({dailyCapUsd:'0',liveCapUsd:'0',capitalAllocationUsd:'200'});
+  await service.setModelSpendingCaps('openai',false);
+  const restored=new HiveService(db,createModels({OPENAI_API_KEY:'fixture'}));
+  await restored.loadModelSettings();
+  expect(restored.model('openai').spendingCapsEnabled).toBe(false);
+  await service.setStatus('RUNNING');
+  const task=await service.createTask({objective:'Cap toggle fixture.',modelId:'openai',reviewModelId:'openai',tokenBudget:100000});
+  await new Worker(service).runNext();
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[task.id])).status).toBe('BLOCKED_APPROVAL');
+  expect((await one(db,'SELECT count(*)::int AS count FROM calls')).count).toBe(0);
+  await service.setModelSpendingCaps('openai',true);
+  expect(service.model('openai').spendingCapsEnabled).toBe(true);
+});
+it('rechecks spending-cap blockers after saving limits without bypassing approval', async () => {
+  const models=createModels({});
+  models.push({...models[0],id:'paid-cap-fixture',live:true,inputPerMillionUsd:'2',outputPerMillionUsd:'12',maxInputTokens:16000});
+  const service=new HiveService(db,models); const worker=new Worker(service);
+  await service.setStatus('RUNNING');
+  const task=await service.createTask({objective:'A bounded task.',modelId:'paid-cap-fixture',budgetUsd:'0',tokenBudget:100000});
+  await worker.runNext();
+  const blocked=await one(db,'SELECT status,error FROM tasks WHERE id=$1',[task.id]);
+  expect(blocked.status).toBe('BLOCKED_BUDGET');
+  expect(blocked.error).toContain('0.068000');
+  await service.configure({dailyCapUsd:'100',liveCapUsd:'0.07',capitalAllocationUsd:'200'});
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[task.id])).status).toBe('PLAN_PENDING');
+  await worker.runNext();
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[task.id])).status).toBe('BLOCKED_APPROVAL');
+  expect((await one(db,'SELECT count(*)::int AS count FROM calls')).count).toBe(0);
+});
+it('does not requeue token blockers or uncertain exposure when limits change', async () => {
+  const service=new HiveService(db,createModels({}));
+  const tokenTask=await service.createTask({objective:'Token-limited task.'});
+  const heldTask=await service.createTask({objective:'Uncertain charge.'});
+  await db.query("UPDATE tasks SET status='BLOCKED_BUDGET',error='Task token budget cannot cover the next maximum call.' WHERE id=$1",[tokenTask.id]);
+  await db.query("UPDATE tasks SET status='BLOCKED_BUDGET',error='Lifetime live-test cap cannot cover the next maximum call cost.' WHERE id=$1",[heldTask.id]);
+  await db.query("INSERT INTO calls(id,task_id,phase,attempt,model_id,provider,is_live,status,reserved,token_reserved,budget_day) VALUES('uncertain-cap',$1,'PLAN',1,'mock-worker','mock',false,'UNCERTAIN',10,100,CURRENT_DATE)",[heldTask.id]);
+  await service.configure({dailyCapUsd:'100',liveCapUsd:'100',capitalAllocationUsd:'200'});
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[tokenTask.id])).status).toBe('BLOCKED_BUDGET');
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[heldTask.id])).status).toBe('BLOCKED_BUDGET');
+});
+it('persists paid model settings without storing a key or making a provider call', async () => {
+  const service = new HiveService(db, createModels({ OPENAI_API_KEY: 'fixture-secret' }));
+  await service.configureModel('openai', settings);
+  expect(service.model('openai').model).toBe('fixture-model');
+  const restored = new HiveService(db, createModels({ OPENAI_API_KEY: 'fixture-secret' }));
+  await restored.loadModelSettings();
+  expect(restored.model('openai').inputPerMillionUsd).toBe('1');
+  expect(JSON.stringify(await service.snapshot())).not.toContain('fixture-secret');
+  expect((await one(db, 'SELECT count(*)::int AS count FROM calls')).count).toBe(0);
+  const noKey = new HiveService(db, createModels({}));
+  await noKey.loadModelSettings();
+  expect(noKey.models.find(m => m.id === 'openai')?.ready).toBe(false);
+  await service.configureModel('openai', {model:'another-fixture'});
+  expect(service.models.find(m => m.id === 'openai')?.model).toBe('another-fixture');
+  expect(service.models.find(m => m.id === 'openai')?.ready).toBe(false);
+});
+it('does not reprice unresolved calls', async () => {
+  const service = new HiveService(db, createModels({ OPENAI_API_KEY: 'fixture-secret' }));
+  const task = await service.createTask({ objective: 'Fixture' });
+  await db.query("INSERT INTO calls(id,task_id,phase,attempt,model_id,provider,is_live,status,reserved,token_reserved,budget_day) VALUES('hold',$1,'PLAN',1,'openai','openai',true,'UNCERTAIN',10,100,CURRENT_DATE)", [task.id]);
+  await expect(service.configureModel('openai', settings)).rejects.toThrow('reconcile');
+});
+it('trims optional history while retaining owner constraints and schema', () => {
+  const request = { model: 'fixture', correlationId: 'fixture', system: 'Obey the owner constraints.', input: { companyRecords: [{ body: 'Never purchase without approval.' }], messages: Array.from({length: 10}, () => ({ body: 'x'.repeat(3000) })), plan: { understanding: 'Current plan' } }, outputSchema: { type: 'object' } };
+  const fitted = fitPrompt(request, 2000);
+  expect(estimatedInputTokens(fitted)).toBeLessThanOrEqual(2000);
+  expect((fitted.input as any).companyRecords).toEqual(request.input.companyRecords);
+  expect(fitted.outputSchema).toEqual(request.outputSchema);
+  expect(request.input.messages).toHaveLength(10);
+});
+it('uses stable role searches and can generate more than sixteen candidates', async () => {
+  const first = await db.transaction(tx => recruitCandidates(tx, 'task', 'Analyst', 'Check source evidence.', {caution:4,rigor:5,dissent:3,initiative:2,thrift:4}));
+  expect(await db.transaction(tx => recruitCandidates(tx, 'task', 'Analyst', 'Check source evidence.'))).toEqual(first);
+  expect(first.every(c => c.traits.rigor >= 4)).toBe(true);
+  const ids = new Set(first.map(c => c.id));
+  for (let i=0; i<5; i++) for (const c of await db.transaction(tx => recruitCandidates(tx, `task-${i}`, 'Analyst', 'Check source evidence.'))) ids.add(c.id);
+  expect(ids.size).toBe(24);
+});
+it('runs beyond a task dollar estimate but still requests approval for paid calls', async () => {
+  const models = createModels({});
+  models.push({ ...models[0], id:'paid-fixture', model:'paid-fixture', provider:'mock', live:true, maxInputTokens:16000, inputPerMillionUsd:'1', outputPerMillionUsd:'2', adapter:new MockProvider() });
+  const service = new HiveService(db, models);
+  await service.configure({dailyCapUsd:'1',liveCapUsd:'1',capitalAllocationUsd:'200'});
+  await service.setStatus('RUNNING');
+  const task = await service.createTask({objective:'Assess a credible offer.',modelId:'paid-fixture',budgetUsd:'0',tokenBudget:100000});
+  await new Worker(service).runNext();
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[task.id])).status).toBe('BLOCKED_APPROVAL');
+  expect((await one(db,'SELECT count(*)::int AS count FROM calls')).count).toBe(0);
+});
+it('hot swaps the CEO and queued tasks without a hidden reviewer', async () => {
+  const service = new HiveService(db, createModels({}));
+  const org = new Organization(service);
+  await service.setStatus('RUNNING'); await org.tick();
+  const before = (await service.snapshot()).tasks[0];
+  const target = before.model_id === 'mock-worker' ? 'mock-reviewer' : 'mock-worker';
+  await db.query("UPDATE tasks SET status='BLOCKED_BUDGET',error='Old capacity block' WHERE id=$1", [before.id]);
+  await org.setEmployeeModel(before.employee_id, target);
+  const after = (await service.snapshot()).tasks[0];
+  expect(after.model_id).toBe(target);
+  expect(after.review_model_id).toBe(before.review_model_id);
+  expect(after.status).toBe('PLAN_PENDING');
+  expect((await one(db,'SELECT ceo_model_id FROM company WHERE id=1')).ceo_model_id).toBe(target);
+  expect((await one(db,'SELECT model_id FROM employees WHERE id=$1',[before.employee_id])).model_id).toBe(target);
+});
+it('preserves an in-flight call and its exposure during a worker hot swap', async () => {
+  const service = new HiveService(db, createModels({}));
+  const org = new Organization(service);
+  await service.setStatus('RUNNING'); await org.tick();
+  const task = (await service.snapshot()).tasks[0];
+  const target = task.model_id === 'mock-worker' ? 'mock-reviewer' : 'mock-worker';
+  await db.query("UPDATE tasks SET status='RUNNING' WHERE id=$1",[task.id]);
+  await db.query("INSERT INTO calls(id,task_id,phase,attempt,model_id,provider,is_live,status,reserved,token_reserved,budget_day) VALUES('flight',$1,'PLAN',1,$2,'mock',false,'DISPATCHED',12,100,CURRENT_DATE)",[task.id,task.model_id]);
+  await org.setEmployeeModel(task.employee_id,target);
+  const call = await one(db,"SELECT * FROM calls WHERE id='flight'");
+  expect(call.model_id).toBe(task.model_id);
+  expect(call.status).toBe('DISPATCHED');
+  expect(BigInt(call.reserved)).toBe(12n);
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[task.id])).status).toBe('RUNNING');
+});
+it('fills published rates and canonical IDs when only a supported model ID is entered', async () => {
+  const service = new HiveService(db,createModels({OPENAI_API_KEY:'fixture',ANTHROPIC_API_KEY:'fixture',GEMINI_API_KEY:'fixture'}));
+  await service.configureModel('openai',{model:'GPT-5.6-terra'});
+  await service.configureModel('anthropic',{model:'claude-sonnet-5'});
+  await service.configureModel('gemini',{model:'gemini-3-5-flash-lite'});
+  expect(service.model('openai').model).toBe('gpt-5.6-terra');
+  expect(service.model('openai').inputPerMillionUsd).toBe('2');
+  expect(service.model('anthropic').outputPerMillionUsd).toBe('10');
+  expect(service.model('gemini').model).toBe('gemini-3.5-flash-lite');
+  expect(service.model('gemini').outputPerMillionUsd).toBe('2.50');
+});
+it('saves the owner profile as agent-readable company context', async () => {
+  const service = new HiveService(db,createModels({}));
+  const profile = {name:'Fixture Owner',role:'Founder',background:'Operations',availability:'Weekdays',preferences:'Dashboard decisions',constraints:'No external commitments without approval.'};
+  await service.saveOwnerProfile(profile);
+  await service.saveOwnerProfile({...profile,name:'Updated Owner'});
+  const snapshot = await service.snapshot();
+  expect(snapshot.ownerProfile.name).toBe('Updated Owner');
+  const record = snapshot.records.find((r:any) => r.id === 'owner-profile');
+  expect(record.body).toContain(profile.constraints);
+  expect(snapshot.records.filter((r:any) => r.id === 'owner-profile')).toHaveLength(1);
+});
+it('runs a single approved provider probe while paused without running business work', async () => {
+  const models=createModels({}); let sent=0;
+  models.push({...models[0],id:'probe',model:'probe',live:true,inputPerMillionUsd:'2',outputPerMillionUsd:'10',adapter:{providerId:'mock',listModels:async()=>[],generate:async()=>{sent++;return {output:{status:'ok'},usage:{inputTokens:100,outputTokens:10},rawModelId:'probe',latencyMs:25};}}});
+  const service=new HiveService(db,models); const worker=new Worker(service);
+  await service.configure({dailyCapUsd:'1',liveCapUsd:'1',capitalAllocationUsd:'200'});
+  const business=await service.createTask({objective:'Do not run during a probe.'});
+  const probe=await service.createProviderTest('probe');
+  expect((await service.createProviderTest('probe')).id).toBe(probe.id);
+  await worker.runNext();
+  expect(sent).toBe(0);
+  const action=await one(db,'SELECT * FROM actions WHERE task_id=$1',[probe.id]);
+  await service.approveAction(action.id,action.action_hash,'APPROVE','Approve the fixture probe maximum.');
+  await worker.runNext(); await worker.runNext();
+  expect(sent).toBe(1);
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[business.id])).status).toBe('PLAN_PENDING');
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[probe.id])).status).toBe('COMPLETED');
+  expect((await service.snapshot()).modelOutcomes).toHaveLength(0);
+});
+
+it('uses the assigned worker for self-checks and records their identity', async () => {
+  const models=createModels({});
+  models.find(m=>m.id==='mock-reviewer')!.adapter={generate:async()=>{throw new Error('Hidden reviewer must never run');}};
+  const service=new HiveService(db,models);const worker=new Worker(service);
+  const {id}=await service.createTask({objective:'Evaluate a small offer',modelId:'mock-worker',reviewModelId:'mock-reviewer',tokenBudget:150000});
+  await service.setStatus('RUNNING');
+  await worker.runNext();await worker.runNext();
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[id])).status).toBe('REVIEW');
+  await worker.runNext();
+  const task=await one(db,'SELECT * FROM tasks WHERE id=$1',[id]);
+  expect(task.status).toBe('COMPLETED');expect(task.review_model_id).toBeNull();
+  expect(task.review.kind).toBe('SELF');expect(task.review.modelId).toBe('mock-worker');
+  expect((await db.query('SELECT DISTINCT model_id FROM calls WHERE task_id=$1',[id])).rows).toEqual([{model_id:'mock-worker'}]);
+});
+it('moves only the current safe legacy review to self-check and preserves uncertain exposure',async()=>{
+  const service=new HiveService(db,createModels({}));const org=new Organization(service);
+  await service.setStatus('RUNNING');await org.tick();
+  const current=(await service.snapshot()).tasks[0];
+  await db.query("UPDATE tasks SET phase='REVIEW',status='FAILED',review_model_id='mock-reviewer',error='Model context is too small (legacy)' WHERE id=$1",[current.id]);
+  const held=await service.createTask({objective:'Held legacy review'});
+  await db.query("UPDATE tasks SET phase='REVIEW',status='BLOCKED_APPROVAL',review_model_id='mock-reviewer',error='Uncertain call' WHERE id=$1",[held.id]);
+  await db.query("INSERT INTO calls(id,task_id,phase,attempt,model_id,provider,is_live,status,reserved,token_reserved,budget_day) VALUES('legacy-hold',$1,'REVIEW',1,'mock-reviewer','mock',false,'UNCERTAIN',12,100,CURRENT_DATE)",[held.id]);
+  const old=await service.createTask({objective:'Superseded CEO cycle',employeeId:current.employee_id});
+  await db.query("UPDATE tasks SET created_at=now()-interval '1 day',phase='REVIEW',status='FAILED',review_model_id='mock-reviewer',error='Model context is too small (legacy)' WHERE id=$1",[old.id]);
+  await service.migrateSelfChecks();
+  expect((await one(db,'SELECT status,review_model_id FROM tasks WHERE id=$1',[current.id]))).toMatchObject({status:'REVIEW',review_model_id:null});
+  expect((await one(db,'SELECT status,review_model_id FROM tasks WHERE id=$1',[held.id]))).toMatchObject({status:'BLOCKED_APPROVAL',review_model_id:'mock-reviewer'});
+  expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[old.id])).status).toBe('FAILED');
+  expect((await one(db,"SELECT status,reserved FROM calls WHERE id='legacy-hold'"))).toMatchObject({status:'UNCERTAIN',reserved:'12'});
+});
+
+it('allows useful self-check revisions beyond seven calls with token estimates',async()=>{
+ const service=new HiveService(db,createModels({}));const adapter=new MockProvider();const generate=adapter.generate.bind(adapter);let reviews=0;
+ adapter.generate=async request=>{const result=await generate(request);if((request.input as any).phase==='REVIEW' && ++reviews<=3)result.output={decision:'REVISE',findings:['Fix a material error in the current assignment.'],nextAction:'Revise the same bounded work.'};return result;};
+ service.models.find(m=>m.id==='mock-worker')!.adapter=adapter;
+ const {id}=await service.createTask({objective:'Iterate on a bounded assignment',tokenBudget:200000});await service.setStatus('RUNNING');const worker=new Worker(service);
+ for(let i=0;i<9;i++)await worker.runNext();
+ expect((await one(db,'SELECT status,attempts FROM tasks WHERE id=$1',[id]))).toMatchObject({status:'COMPLETED',attempts:9});
+ const limited=await service.createTask({objective:'Respect remaining tokens',tokenBudget:100});await worker.runNext();
+ expect((await one(db,'SELECT status FROM tasks WHERE id=$1',[limited.id])).status).toBe('READY');
+});
+
+it('sets up Astra with its verified rates from a model ID alone',async()=>{
+ const service=new HiveService(db,createModels({OPENAI_API_KEY:'fixture-secret'}));
+ await service.configureModel('openai',{model:'gpt-6-astra'});
+ expect(service.models.find(m=>m.id==='openai')).toMatchObject({ready:true,inputPerMillionUsd:'10',outputPerMillionUsd:'50',maxInputTokens:16000,maxOutputTokens:3000});
+ expect((await db.query('SELECT id FROM calls')).rows).toHaveLength(0);
+});

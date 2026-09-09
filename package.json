@@ -1,0 +1,24 @@
+{
+  "name": "busywork",
+  "private": true,
+  "version": "0.0.1",
+  "license": "AGPL-3.0-only",
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "dev": "pnpm --filter @hive/api dev",
+    "start": "node apps/api/dist/index.js",
+    "demo": "node scripts/dev-fixture.mjs",
+    "build": "pnpm -r build",
+    "test": "pnpm build && vitest run",
+    "typecheck": "pnpm build && pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0",
+    "pnpm": "10.34.5",
+    "@playwright/test": "^1.55.0"
+  }
+}

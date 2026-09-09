@@ -1,0 +1,2 @@
+import {z} from 'zod';
+export const backlogInput=z.object({title:z.string().trim().min(1).max(250),instructions:z.string().trim().min(1).max(12000),successCriteria:z.string().trim().min(1).max(2000),priority:z.enum(['HIGH','NORMAL','LOW']).default('NORMAL'),orderId:z.uuid().nullable().default(null),experimentId:z.uuid().nullable().default(null),employeeId:z.string().min(1).max(100).nullable().default(null),dependsOn:z.array(z.uuid()).max(20).default([]),cancelled:z.boolean().default(false),expectedVersion:z.number().int().min(0)}).strict();

@@ -1,0 +1,51 @@
+import {it,expect} from 'vitest';
+import {mkdtemp,mkdir,writeFile,readFile,rm,access} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join,resolve,sep} from 'node:path';
+import {backup,restore} from '../scripts/backup.mjs';
+import {openDatabase,HiveService,createModels,one} from '../packages/runtime/src/index.js';
+
+it('restores verified database state paused without copying credentials or overwriting directories',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'hive-backup-test-')),source=join(root,'source'),saved=join(root,'backup'),restored=join(root,'restored');
+  await mkdir(source);let db;
+  try{
+    db=await openDatabase(join(source,'postgres'));const service=new HiveService(db,createModels({}));
+    await service.recordMoney({kind:'FUNDING',amountUsd:'12.123456',description:'Offline backup fixture',externalReference:'backup-fixture',idempotencyKey:'backup-fixture'});
+    await db.query("UPDATE company SET status='RUNNING' WHERE id=1");await db.close();db=undefined;
+    await writeFile(join(source,'owner-token.txt'),'fixture-secret');
+    await writeFile(join(source,'email-token.key'),'fixture-key');
+    await mkdir(join(source,'workspaces/agents/ceo'),{recursive:true});
+    await mkdir(join(source,'workspaces/shared'),{recursive:true});
+    await writeFile(join(source,'workspaces/agents/ceo/notes.md'),'Original notes');
+    await writeFile(join(source,'workspaces/shared/model.blend'),Buffer.from([0,1,2,255]));
+    await writeFile(join(source,'server.lock'),String(process.pid));
+    await expect(backup(source,saved)).rejects.toThrow('Stop Hive');await rm(join(source,'server.lock'));
+    await expect(backup(source,join(source,'..nested'))).rejects.toThrow('outside');
+    await backup(source,saved);
+    await expect(access(join(saved,'owner-token.txt'))).rejects.toThrow();
+    await expect(access(join(saved,'email-token.key'))).rejects.toThrow();
+    await expect(restore(saved,source)).rejects.toThrow();
+    await restore(saved,restored);
+    expect(await readFile(join(restored,'workspaces/agents/ceo/notes.md'),'utf8')).toBe('Original notes');
+    expect(await readFile(join(restored,'workspaces/shared/model.blend'))).toEqual(Buffer.from([0,1,2,255]));
+    db=await openDatabase(join(restored,'postgres'));
+    expect((await one(db,'SELECT status FROM company WHERE id=1')).status).toBe('PAUSED');
+    expect((await new HiveService(db,createModels({})).snapshot()).metrics.availableCapitalUsd).toBe('12.123456');
+    expect((await db.query("SELECT sequence FROM events WHERE type='company.restored'")).rows).toHaveLength(1);
+    await db.close();db=undefined;
+    const manifest=JSON.parse(await readFile(join(saved,'manifest.json'),'utf8'));
+    expect(manifest.version).toBe(2);
+    await writeFile(join(saved,'workspaces/agents/ceo/notes.md'),'changed');
+    await expect(restore(saved,join(root,'bad-workspace'))).rejects.toThrow('integrity');
+    await expect(access(join(root,'bad-workspace'))).rejects.toThrow();
+    await writeFile(join(saved,'workspaces/agents/ceo/notes.md'),'Original notes');
+    const legacy={...manifest,version:1};delete legacy.workspaceFiles;
+    await writeFile(join(saved,'manifest.json'),JSON.stringify(legacy));
+    await restore(saved,join(root,'legacy-restored'));
+    await expect(access(join(root,'legacy-restored/workspaces'))).rejects.toThrow();
+    await writeFile(join(saved,'manifest.json'),JSON.stringify(manifest));
+    await writeFile(join(saved,'postgres',manifest.files.find(file=>file.sha256).path),'corrupted');
+    await expect(restore(saved,join(root,'corrupt-restore'))).rejects.toThrow('integrity');
+    await expect(access(join(root,'corrupt-restore'))).rejects.toThrow();
+  }finally{await db?.close();if(!resolve(root).startsWith(resolve(tmpdir())+sep)||!root.includes('hive-backup-test-'))throw Error('Unsafe cleanup');await rm(root,{recursive:true,force:true});}
+});

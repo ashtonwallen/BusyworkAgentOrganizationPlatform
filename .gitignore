@@ -1,0 +1,29 @@
+node_modules/
+dist/
+.next/
+.env
+.env.local
+*.log
+.DS_Store
+coverage/
+artifacts/
+release/
+tmp/
+
+data/
+backups/
+data-restored/
+.env.*
+!.env.example
+playwright-report/
+test-results/
+
+# Real inbound payment destinations. Receiving addresses and handles are financial
+# identifiers; keep them out of version control. See the .example file for the format.
+Payment_Info*.txt
+!Payment_Info*.example.txt
+config/*.json
+!config/*.example.json
+!config/models.registry.example.json
+*.local.json
+recordings/

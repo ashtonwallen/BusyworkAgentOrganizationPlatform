@@ -1,0 +1,29 @@
+{
+  "name": "@hive/runtime",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@hive/core": "workspace:*",
+    "@hive/providers": "workspace:*",
+    "mailparser": "^3.9.23",
+    "nodemailer": "^10.0.1",
+    "playwright": "1.63.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/nodemailer": "^8.0.1",
+    "typescript": "^5.0.0"
+  }
+}

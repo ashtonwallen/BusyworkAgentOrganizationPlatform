@@ -1,0 +1,16 @@
+[
+  {
+    "id": "additional-local-worker",
+    "name": "Additional local worker",
+    "provider": "lmstudio",
+    "model": "REPLACE_WITH_DISCOVERED_MODEL_ID",
+    "family": "local",
+    "enabled": false,
+    "baseUrl": "http://localhost:1235/v1",
+    "allowLan": false,
+    "inputPerMillionUsd": "0",
+    "outputPerMillionUsd": "0",
+    "maxInputTokens": 16000,
+    "maxOutputTokens": 3000
+  }
+]

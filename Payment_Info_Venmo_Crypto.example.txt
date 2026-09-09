@@ -1,0 +1,20 @@
+# Inbound payment destinations. Copy this file to Payment_Info_Venmo_Crypto.txt
+# and fill in real values. The real file is git-ignored on purpose.
+#
+# Format: one "Label: value" per line. Add "(preferred)" to a label to mark the
+# destination agents should offer first. Blank lines and # comments are ignored.
+#
+# Only ever put RECEIVING details here — public addresses and handles.
+# Never a private key, seed phrase, or full bank credential. Nothing in this
+# system can move money; it only records what arrived.
+
+Bitcoin (preferred): bc1qexampleexampleexampleexampleexampleexam
+Ethereum: 0x0000000000000000000000000000000000000000
+Solana: 11111111111111111111111111111111
+Base: 0x0000000000000000000000000000000000000000
+
+Venmo: your-venmo-handle
+
+Direct deposit details: Coming later
+
+Other payment mechanisms should be added as needed.
