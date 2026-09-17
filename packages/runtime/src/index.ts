@@ -48,3 +48,4 @@ export {missionTemplates,missionInput,currentMission,createMission,activateMissi
 export {confirmMissionCompletion,stopMission,resumeMission,missionExposure,missionProgress} from './mission-lifecycle.js';
 export {configuredSearch,searchTool,BraveSearchProvider} from './web-search.js';
 export {runtimeToolRegistry} from './tools.js';
+export {sourceIndex,readSource} from './source-records.js';

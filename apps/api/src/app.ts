@@ -1,4 +1,5 @@
 import {proposeOrderEmail} from '@hive/runtime';
+import {sourceIndex,readSource,currentMission} from '@hive/runtime';
 import {createMission,activateMission,approveDepartment} from '@hive/runtime';
 import {confirmMissionCompletion,stopMission,resumeMission} from '@hive/runtime';
 import {saveOrder,readOrder} from '@hive/runtime';
@@ -182,6 +183,8 @@ export function buildApp(options: AppOptions = {}) {
     api.post("/company/status", async (request) => { const x = z.object({ status: z.enum(["RUNNING", "PAUSED", "KILLED"]) }).strict().parse(request.body); await svc().setStatus(x.status); return { ok: true }; });
     api.put("/company/budgets", async (request) => { const x = z.object({ dailyCapUsd: usd, liveCapUsd: usd, capitalAllocationUsd: usd }).strict().parse(request.body); await svc().configure(x); return { ok: true }; });
     api.post('/missions',async request=>createMission(svc(),request.body));
+    api.get('/sources',async()=>sourceIndex(svc().db,(await currentMission(svc().db))?.id??null));
+    api.get('/sources/:id',async request=>{const {id}=z.object({id:shortText}).parse(request.params);const {offset}=z.object({offset:z.coerce.number().int().min(0).default(0)}).parse(request.query);return readSource(svc().db,id,offset);});
     api.post('/missions/:id/resume',async request=>{const {id}=z.object({id:shortText}).parse(request.params);await resumeMission(svc(),id,request.body);return {ok:true};});
     api.post('/missions/:id/stop',async request=>{const {id}=z.object({id:shortText}).parse(request.params);await stopMission(svc(),id);return {ok:true};});
     api.post('/missions/completion/:id',async request=>{const {id}=z.object({id:shortText}).parse(request.params);const {hash,accept}=z.object({hash:z.string().length(64),accept:z.boolean()}).strict().parse(request.body);await confirmMissionCompletion(svc(),id,hash,accept);return {ok:true};});

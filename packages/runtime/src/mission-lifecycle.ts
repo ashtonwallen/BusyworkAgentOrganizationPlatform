@@ -64,6 +64,7 @@ async function validateEvidence(tx:Tx,missionId:string,ref:z.infer<typeof refere
   const doc=await readDocument(tx,ref.id,ref.version);
   await one(tx,'SELECT document_id FROM document_versions WHERE document_id=$1 AND version=$2 AND mission_id=$3',[doc.id,ref.version,missionId]);
  }else if(ref.kind==='TASK')await one(tx,"SELECT id FROM tasks WHERE id=$1 AND mission_id=$2 AND status='COMPLETED'",[ref.id,missionId]);
+ else if(ref.kind==='SOURCE')await one(tx,'SELECT id FROM source_records WHERE id=$1 AND mission_id=$2',[ref.id,missionId]);
  else await one(tx,"SELECT id FROM actions WHERE id=$1 AND mission_id=$2 AND status='EXECUTED' AND result IS NOT NULL",[ref.id,missionId]);
 }
 export async function requestMissionCompletion(tx:Tx,task:Row,raw:unknown){

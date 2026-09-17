@@ -1,6 +1,7 @@
 import { PGlite, type Transaction } from "@electric-sql/pglite";
 import {migration17} from './mission-schema.js';
 import {migration18} from './delegation-schema.js';
+import {migration19} from './evidence-schema.js';
 import { migration1, migration2, migration3, migration4, migration5, migration6, migration7, migration8, migration9, migration10, migration11, migration12, migration13, migration14, migration15, migration16 } from "./schema.js";
 
 export type Tx = Transaction;
@@ -76,6 +77,9 @@ export async function openDatabase(dataDir?: string) {
   });
   await db.transaction(async tx=>{
     if(!(await tx.query('SELECT version FROM hive_migrations WHERE version=18')).rows.length){await tx.exec(migration18);await tx.query('INSERT INTO hive_migrations(version) VALUES(18)');}
+  });
+  await db.transaction(async tx=>{
+    if(!(await tx.query('SELECT version FROM hive_migrations WHERE version=19')).rows.length){await tx.exec(migration19);await tx.query('INSERT INTO hive_migrations(version) VALUES(19)');}
   });
   return db;
 }

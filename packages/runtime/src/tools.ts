@@ -1,4 +1,5 @@
 import {recoverDeploymentCreations} from './deployments.js';
+import {recordSource} from './source-records.js';
 import { lookup } from "node:dns/promises";
 import { request } from "node:https";
 import { randomUUID } from "node:crypto";
@@ -119,6 +120,8 @@ export class ToolGateway {
     }
     const cost=parseUsd(outcome.actualCostUsd);
     await this.service.db.transaction(async(tx)=>{
+      const sourceId=await recordSource(tx,admission.action,outcome.result,this.service.now());
+      if(sourceId)outcome.result={...(outcome.result as Record<string,unknown>),sourceRecordId:sourceId};
       await tx.query("UPDATE actions SET status='EXECUTED',reservation=0,settled=$2,result=$3 WHERE id=$1",[id,cost.toString(),JSON.stringify(outcome.result)]);
       await tx.query("INSERT INTO ledger(id,idempotency_key,account,kind,amount,action_id,task_id,description,experiment_id) VALUES($1,$2,'OPERATING','COST',$3,$4,$5,$6,$7)",[randomUUID(),`tool:${id}`,cost.toString(),id,admission.action.task_id,`${admission.tool.name} execution`,admission.action.experiment_id]);
       if(cost>BigInt(admission.action.max_cost)){await tx.query("UPDATE company SET status='PAUSED',revision=revision+1 WHERE id=1");await event(tx,'company.tool_bound_exceeded','company',{actionId:id});}

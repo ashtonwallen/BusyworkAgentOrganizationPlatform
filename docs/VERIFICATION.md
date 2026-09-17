@@ -40,3 +40,11 @@ Validation: 37 tests passed (organization and mission-scorecard), including cros
 `SEARCH_WEB` uses a pluggable provider interface with an initial Brave transport. No provider key or query price means unavailable. Proposals freeze provider/query/count/price; changed pricing requires a new proposal. Paid searches reserve before dispatch, check mission/daily/lifetime caps and settle the configured query price only on a confirmed response. Uncertain calls retain holds without retry. Search output is explicitly untrusted discovery content.
 
 Validation: 13 focused tests (search, gateway and capabilities) passed, including exact reservation before transport, once-only settlement, price-change rejection, cap enforcement, unavailable setup and credential isolation. Provider HTTP tests use injected responses; no live search account was called. Build/typecheck and dashboard smoke passed. Adapter contract was checked against the official Brave API reference linked in INTEGRATIONS.md.
+
+## Step 5: sources and citations
+
+Migration 19 adds immutable source records and versioned claim/citation associations. Confirmed page reads and search responses retain originating action/task, URL, retrieval time, retained-text hash and truncation. Search responses are marked discovery, not fetched-page evidence. Research claims cite recorded IDs; uncited claims must be INFERENCE or HYPOTHESIS, and unknown source IDs are rejected. The document viewer exposes citations and missing-source warnings, plus bounded source text pages.
+
+Limitation: this checks provenance for structured claims, not semantic truth or complete coverage of arbitrary prose. Documents without structured claims visibly say coverage is unassessed. Hashes cover retained text, and truncation remains explicit. Agents are instructed to include source IDs in report text so plain-text exports retain references.
+
+Validation: 17 focused tests passed (sources, documents, search and reset), plus persistence after migration 19. Build/typecheck and dashboard smoke, including a document detail view, passed. No network retrieval occurred in tests.

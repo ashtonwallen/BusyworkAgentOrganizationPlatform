@@ -39,6 +39,9 @@ export async function showDocument(path,version) {
  openModal(doc.title,`<p class="muted">${esc(doc.path)} &middot; Version ${doc.version} of ${doc.current_version} · ${esc(employeeName(doc.author_id))}</p>
  <div class="document-actions"><button class="primary" data-document-edit="${esc(path)}">Edit latest</button><button data-document-download="${esc(path)}" data-version="${doc.version}">Download this version</button><button data-document-pdf="${esc(path)}" data-version="${doc.version}">Download PDF</button></div>
  <pre class="document-content">${esc(doc.content)}</pre>
+ <section class="card-body"><h3>Claims and citations</h3>
+ ${(doc.claims??[]).length?(doc.claims??[]).map(claim=>`<div class="record"><p><strong>${esc(claim.kind)}</strong>${claim.uncited?' · No linked source':''}</p><p>${esc(claim.text)}</p>${claim.sources.map(source=>`<button class="text-link" data-source="${esc(source.id)}">${esc(source.url)} · ${source.kind==='SEARCH_RESULTS'?'Search discovery':'Fetched page'}${source.truncated?' · Partial capture':''}</button>`).join('<br>')}</div>`).join(''):'<p class="section-note">No structured claims or citations were supplied. Factual claims in this document have not been assessed.</p>'}
+ <p class="section-note">A citation identifies retained evidence; it does not prove a claim. Unstructured prose is not automatically fact-checked.</p></section>
  <details><summary>Version history (${versions.length})</summary>${versions.map(v=>`<button class="document-row" data-document="${esc(path)}" data-version="${v.version}"><span>Version ${v.version} · ${esc(v.title)}</span><small>${esc(employeeName(v.author_id))} · ${ago(v.created_at)}</small></button>`).join('')}</details>`,{wide:true});
 }
 export async function editDocument(path) {
@@ -56,3 +59,9 @@ export async function downloadDocument(path,version) {
 }
 
 document.addEventListener('click',async event=>{const button=event.target.closest('[data-document-pdf]');if(!button)return;button.disabled=true;try{const path=button.dataset.documentPdf;await download('/documents/export.pdf?path='+encodeURIComponent(path)+'&version='+button.dataset.version,path.split('/').pop().replace(/\.[^.]+$/,'')+'.pdf');}catch(error){toast(error.message);}finally{button.disabled=false;}});
+document.addEventListener('click',async event=>{
+ const button=event.target.closest('[data-source]');if(!button)return;
+ try{const source=await api('/sources/'+encodeURIComponent(button.dataset.source)+'?offset='+(button.dataset.offset??0));
+  openModal('Source record',`<p>${esc(source.url)}</p><p class="muted">${esc(source.id)} · ${esc(source.retrieved_at)} · ${source.truncated?'Partial capture':'Retained capture'}</p><p>Untrusted source content. Hash covers the retained text.</p><code>${esc(source.content_hash)}</code><pre class="document-content">${esc(source.content)}</pre>${source.nextOffset!==null?`<button data-source="${esc(source.id)}" data-offset="${source.nextOffset}">Continue reading</button>`:''}`,{wide:true});
+ }catch(error){toast(error.message);}
+});

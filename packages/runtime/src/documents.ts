@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { event, type Tx, type Row } from './db.js';
 import { DomainError } from './service.js';
+import {documentClaims} from './evidence-input.js';
+import {claimsForDocument} from './source-records.js';
 
 export const documentPath = z.string().trim().min(1).max(250).regex(/^[a-zA-Z0-9][a-zA-Z0-9_. /-]*$/)
   .refine(path => path.split('/').every(part => part.trim() === part && part.length > 0 && part !== '.' && part !== '..'), 'Use a relative document path without dot segments.');
-export const documentInput = z.object({path:documentPath,title:z.string().trim().min(1).max(250),content:z.string().min(1).max(12000),expectedVersion:z.number().int().min(0)}).strict();
+export const documentInput = z.object({path:documentPath,title:z.string().trim().min(1).max(250),content:z.string().min(1).max(12000),expectedVersion:z.number().int().min(0),claims:documentClaims.default([])}).strict();
 
 /** Caller holds the company lock: owner writes and agent operations serialize together. */
 export async function writeDocument(tx:Tx,raw:unknown,authorId:string,taskId?:string) {
@@ -17,15 +19,22 @@ export async function writeDocument(tx:Tx,raw:unknown,authorId:string,taskId?:st
  if(prior) await tx.query('UPDATE documents SET title=$2,version=$3,updated_by=$4,updated_at=now() WHERE id=$1',[id,x.title,version,authorId]);
  else await tx.query('INSERT INTO documents(id,path,title,version,updated_by) VALUES($1,$2,$3,$4,$5)',[id,x.path,x.title,version,authorId]);
  await tx.query('INSERT INTO document_versions(document_id,version,title,content,author_id,task_id) VALUES($1,$2,$3,$4,$5,$6)',[id,version,x.title,x.content,authorId,taskId ?? null]);
+ for(const [index,claim] of x.claims.entries()){
+  const sources=[...new Set(claim.sourceIds)];
+  const known=(await tx.query('SELECT id FROM source_records WHERE id=ANY($1::text[])',[sources])).rows;
+  if(known.length!==sources.length)throw new DomainError('Cite recorded source IDs; at least one source does not exist.');
+  await tx.query('INSERT INTO document_claims(document_id,version,claim_index,claim,kind) VALUES($1,$2,$3,$4,$5)',[id,version,index,claim.text,claim.kind]);
+  for(const source of sources)await tx.query('INSERT INTO claim_sources(document_id,version,claim_index,source_id) VALUES($1,$2,$3,$4)',[id,version,index,source]);
+ }
  await event(tx,'document.saved',id,{path:x.path,title:x.title,version,taskId:taskId ?? null},authorId);
  return {id,path:x.path,version};
 }
-export async function readDocument(tx:Pick<Tx,'query'>,path:string,version?:number) {
+export async function readDocument(tx:Pick<Tx,'query'>,path:string,version?:number):Promise<Row> {
  path=documentPath.parse(path);
  const record=(await tx.query<Row>(`SELECT d.id,d.path,d.version AS current_version,v.version,v.title,v.content,v.author_id,v.task_id,v.created_at
  FROM documents d JOIN document_versions v ON v.document_id=d.id AND v.version=COALESCE($2,d.version) WHERE d.path=$1`,[path,version ?? null])).rows[0];
  if(!record)throw new DomainError('Document or version not found.',404);
- return record;
+ return {...record,claims:await claimsForDocument(tx,record.id,record.version),citationCoverage:'STRUCTURED_CLAIMS_ONLY; unstructured text is not automatically fact-checked.'};
 }
 export async function documentIndex(tx:Pick<Tx,'query'>,search='') {
  return (await tx.query<Row>(`SELECT id,path,title,version,updated_by,updated_at FROM documents

@@ -1,5 +1,6 @@
 import {cancelAssignedWork} from './task-cancellation.js';
 import {currentMission,proposeDepartment} from './missions.js';
+import {readSource} from './source-records.js';
 import {missionAdmission,checkMissionStall,requestMissionCompletion} from './mission-lifecycle.js';
 import {readBacklog} from './backlog.js';
 import {withdrawOwnEmail} from './email-withdraw.js';
@@ -347,8 +348,11 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
             if(!operation.releaseFiles?.length)throw new DomainError('PREPARE_RELEASE requires releaseFiles with published path, documentPath and exact version for each file.');
             if(!z.uuid().safeParse(operation.target).success)throw new DomainError('PREPARE_RELEASE target must be the existing Netlify site UUID from company records. Request the missing site ID; do not invent one.');
             const saved=await createStaticRelease(tx,{requestId:id,title:operation.title,siteId:operation.target,files:operation.releaseFiles},sender,source.id);id=saved.id;
+          } else if (operation.type === 'READ_SOURCE') {
+            const result=await readSource(tx,operation.target,operation.resultOffset??0);
+            await tx.query("INSERT INTO messages(id,sender_id,recipient_id,kind,subject,body,task_id) VALUES($1,'sources',$2,'MESSAGE','Source record',$3,$4)",[id,sender,JSON.stringify(result),source.id]);
           } else if (operation.type === 'WRITE_DOCUMENT') {
-            const saved=await writeDocument(tx,{path:operation.target,title:operation.title,content:operation.instructions,expectedVersion:operation.expectedVersion ?? 0},sender,source.id);id=saved.id;
+            const saved=await writeDocument(tx,{path:operation.target,title:operation.title,content:operation.instructions,expectedVersion:operation.expectedVersion ?? 0,claims:operation.documentClaims??[]},sender,source.id);id=saved.id;
           } else if (operation.type === 'FIND_DOCUMENTS') {
             const found=(await documentIndex(tx,operation.target)).slice(0,30);
             await this.validRecipient(tx,sender);

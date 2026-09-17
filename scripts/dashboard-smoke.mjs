@@ -31,6 +31,8 @@ try{
  await page.goto(url);await page.locator('#owner-key').fill(token);
  await page.getByRole('button',{name:'Open dashboard',exact:true}).click();
  await page.locator('#content .page-title').waitFor();
+ const seeded=await page.evaluate(async()=>{const response=await fetch('/v1/documents',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:'smoke/report.md',title:'Synthetic report',content:'A synthetic hypothesis for UI verification.',expectedVersion:0,claims:[{text:'Synthetic hypothesis.',kind:'HYPOTHESIS',sourceIds:[]}]})});return response.status;});
+ assert.equal(seeded,200,'Synthetic document could not be created');
  const pages=await page.locator('nav [data-page]').evaluateAll(nodes=>nodes.map(node=>node.dataset.page));
  for(const name of pages){
   await page.locator(`nav [data-page="${name}"]`).click();
@@ -38,7 +40,10 @@ try{
   assert.ok((await page.locator('#content').innerText()).trim().length>30,`${name} is blank`);
   assert.ok(await page.locator('#content .card, #content .page-title').count(),`${name} did not render`);
  }
- assert.deepEqual(errors,[]);console.log(JSON.stringify({pages:pages.length,browserErrors:0,synthetic:true}));
+ await page.locator('nav [data-page="documents"]').click();
+ await page.locator('#content [data-document]').first().click();
+ await page.getByRole('heading',{name:'Claims and citations',exact:true}).waitFor();
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({pages:pages.length,documentDetail:true,browserErrors:0,synthetic:true}));
 }finally{
  await browser?.close();
  if(server.exitCode===null){server.kill();await new Promise(resolve=>server.once('exit',resolve));}
