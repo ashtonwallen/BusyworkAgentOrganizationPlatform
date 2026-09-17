@@ -1,0 +1,16 @@
+# Mission generalization verification
+
+## Step 0: clean-clone baseline (2026-09-17)
+
+Cloned commit `1b5e6e6` into a disposable ignored directory with no instance configuration or database. Installed locked dependencies offline from the local package cache.
+
+- Build: passed.
+- Full test suite: 292 passed, one optional Docker sandbox test skipped (62 passing files, one skipped).
+- Typecheck: passed.
+- Requested dashboard smoke command: initially failed because the script did not exist in the candidate.
+
+Added `scripts/dashboard-smoke.mjs`. It starts its own in-memory fixture on a temporary loopback port, starts no worker, permits browser requests only to that fixture, checks all navigation sections, and shuts down its browser and fixture. It does not depend on a running personal instance or credentials. Applied that script to the clean clone and verified all 13 sections with zero browser errors. Requires an installed Playwright Chromium binary.
+
+The pre-existing `docs/DEMO.md` edit belongs to the website simulator handoff. It was inspected and deliberately left uncommitted and unchanged. No website files were edited. Snapshot/UI changes in subsequent steps require a separate simulator re-sync by its maintainer.
+
+The owner subsequently requested proportionate testing: focused behavior tests while implementing, then a full consistency check at the end, rather than a full-suite repetition after every commit.
