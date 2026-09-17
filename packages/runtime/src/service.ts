@@ -1,3 +1,4 @@
+import {missionSummaries} from './mission-summary.js';
 import {assertMissionExternal} from './mission-capabilities.js';
 import {instanceSettings} from './instance-settings.js';
 import {currentMission,missionTemplates} from './missions.js';
@@ -289,7 +290,7 @@ export class HiveService {
         instance:instanceSettings,
         mission:await currentMission(tx),missionTemplates,
         searchSetup:this.searchSetup,
-        missions:await query('SELECT * FROM missions ORDER BY created_at DESC'),
+        missions:await missionSummaries(tx),
         emailMailbox:(await query("SELECT address,provider,enabled,daily_send_limit,last_synced_at,error,credential_ciphertext IS NOT NULL AS connected FROM email_mailboxes WHERE address=$1",[instanceSettings.mailbox]))[0]??null,
         emailPermissions:await query("SELECT e.id,e.name,e.role,COALESCE(p.can_read,e.role='CEO') AS can_read,COALESCE(p.can_send,e.role='CEO') AS can_send FROM employees e LEFT JOIN email_permissions p ON p.employee_id=e.id WHERE e.status='ACTIVE'"),
         emailQueueStatus:await emailQueueStatus(tx,this.now()),
@@ -445,7 +446,8 @@ export class HiveService {
   async taskExposure(tx: Tx, taskId: string) {
     const r = await one(tx, `SELECT COALESCE(SUM(COALESCE(settled,0)+CASE WHEN status IN ${activeCalls} THEN reserved ELSE 0 END),0)::text AS cost,
       COALESCE(SUM(CASE WHEN status IN ${activeCalls} OR (status='RECONCILED' AND (input_tokens IS NULL OR output_tokens IS NULL)) THEN token_reserved ELSE COALESCE(input_tokens,0)+COALESCE(output_tokens,0) END),0)::text AS tokens FROM calls WHERE task_id=$1`, [taskId]);
-    return { cost: BigInt(r.cost), tokens: Number(r.tokens) };
+    const outside=await one(tx,"SELECT (SELECT COALESCE(sum(amount),0) FROM ledger WHERE task_id=$1 AND call_id IS NULL AND account<>'TEST' AND kind='COST')+(SELECT COALESCE(sum(reservation),0) FROM actions WHERE task_id=$1 AND action_type<>'MODEL_CALL') AS cost",[taskId]);
+    return { cost: BigInt(r.cost)+BigInt(outside.cost), tokens: Number(r.tokens) };
   }
   async taskDetail(id:string) {
     return this.db.transaction(async tx=>{
@@ -555,6 +557,8 @@ export class HiveService {
     await this.db.transaction(async (tx) => {
       const row = await one(tx, "SELECT * FROM owner_requests WHERE id=$1 FOR UPDATE", [id]);
       if (row.status !== "OPEN") throw new DomainError("Request already resolved.");
+      let kind;try{kind=JSON.parse(row.details).kind;}catch{}
+      if(["MISSION_COMPLETION","CAMPAIGN_APPROVAL"].includes(kind)||(kind==="DEPARTMENT"&&status!=="DECLINED"))throw new DomainError("Use this request?s dedicated approval controls; a generic response does not change its authority or mission state.");
       await tx.query("UPDATE owner_requests SET status=$2,response=$3,minutes=$4 WHERE id=$1", [id, status, response, minutes]);
       await event(tx, "owner.request_resolved", id, { status, response, minutes }, "owner");
       const origin=(await tx.query<Row>("SELECT payload FROM events WHERE entity_id=$1 AND type='owner.requested' ORDER BY sequence LIMIT 1",[id])).rows[0]?.payload;
@@ -702,12 +706,13 @@ export class HiveService {
       if (company.status !== "RUNNING") throw new DomainError("Company must be running to dispatch actions.");
       const action = await one(tx, "SELECT * FROM actions WHERE id=$1 FOR UPDATE", [id]);
       if (action.status === "EXECUTED") return action.result;
+      await assertMissionExternal(tx,action.mission_id,action.action_type);
       if (action.action_type !== "SANDBOX_PURCHASE") throw new DomainError("No live external executor is installed for this action. Approval alone does not execute it.");
       if (!["PENDING", "APPROVED"].includes(action.status) || new Date(action.expires_at) <= this.now()) throw new DomainError("Action is not executable.");
       let grantId: string | null = null;
       if (action.status !== "APPROVED") {
         if (action.revises_action_id || company.approval_policy.expenses !== false) throw new DomainError("Owner approval is required for every expense under the current policy.");
-        const grants = await tx.query<Row>("SELECT * FROM grants WHERE action_type=$1 AND target=$2 AND (experiment_id IS NULL OR experiment_id=$3) AND NOT revoked AND expires_at>$4 ORDER BY created_at,id FOR UPDATE", [action.action_type, action.target, action.experiment_id, this.now()]);
+        const grants = await tx.query<Row>("SELECT * FROM grants WHERE action_type=$1 AND target=$2 AND (experiment_id IS NULL OR experiment_id=$3) AND NOT revoked AND expires_at>$4 AND mission_id=$5 ORDER BY created_at,id FOR UPDATE", [action.action_type, action.target, action.experiment_id, this.now(),action.mission_id]);
         for (const grant of grants.rows) { const used = await one(tx, "SELECT COALESCE(SUM(COALESCE(settled,0)+reservation),0)::text AS amount FROM actions WHERE grant_id=$1", [grant.id]); if (BigInt(action.max_cost) <= BigInt(grant.max_transaction) && BigInt(action.max_cost) + BigInt(used.amount) <= BigInt(grant.total_cap)) { grantId = grant.id; break; } }
         if (!grantId) throw new DomainError("No matching active grant; approve the exact action first.");
       } else {

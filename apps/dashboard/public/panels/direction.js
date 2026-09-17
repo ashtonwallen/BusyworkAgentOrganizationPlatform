@@ -62,7 +62,7 @@ export function directionCard() {
 export function mandateStrip() {
   const c = state.data.company;
   return `<div class="mandate-strip">
-    <div><span class="eyebrow">Your mandate to the company</span><p>${truncate(c.mandate, 260)}</p></div>
+    <div><span class="eyebrow">Mission boundaries</span><p>${truncate(state.data.mission?.boundaries||c.mandate, 260)}</p></div>
     <button class="text-link" data-action="mandate">Edit mandate & limits ${icon('arrow')}</button>
   </div>`;
 }

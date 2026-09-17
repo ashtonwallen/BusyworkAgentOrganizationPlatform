@@ -1,3 +1,4 @@
+import {missions,needsMission} from './pages/missions.js';
 import {orders} from './pages/orders.js';
 import {editBusinessEntity,emailPage,connectEmail,syncEmail,composeEmail,showEmail,emailSettings} from './pages/email.js';
 import {prepareRelease,showRelease,showDeployment} from './pages/releases.js';
@@ -29,6 +30,7 @@ import * as forms from './modals/forms.js';
 
 const NAV = [
   ['overview', 'home', 'Overview'],
+  ['missions','work','Missions'],
   ['experiments', 'idea', 'Opportunities'],
   ['orders','work','Orders'],
   ['work', 'work', 'Work'],
@@ -43,7 +45,7 @@ const NAV = [
   ['settings', 'settings', 'Controls'],
 ];
 
-const PAGES = { orders,overview, experiments: opportunities, work, inbox, finance: moneyPage, team, conversations, documents, email:emailPage, models, log, settings: controls };
+const PAGES = { missions,orders,overview, experiments: opportunities, work, inbox, finance: moneyPage, team, conversations, documents, email:emailPage, models, log, settings: controls };
 
 let busy = false;
 let refreshPending = false;
@@ -62,7 +64,7 @@ function showLogin() {
       <form class="login-box" id="login">
         <div class="brand"><span class="brand-mark">b</span><span class="brand-name">Busywork</span></div>
         <h2>Sign in</h2>
-        <p>Your company's control panel. It runs on this machine only.</p>
+        <p>Your team's control panel on this installation.</p>
         <div class="field"><label for="owner-key">Owner access key</label>
           <input id="owner-key" name="token" type="password" autocomplete="current-password" required placeholder="Access key"></div>
         <p class="error-message" id="login-error" role="alert"></p>
@@ -120,7 +122,7 @@ function shell() {
     <div class="brand"><span class="brand-mark">b</span><span class="brand-name">Busywork</span></div>
     <button class="drawer-close" data-action="close-menu">Close sections</button>
     <nav class="nav" aria-label="Sections">
-      ${NAV.map(([id, name, label]) => `<button data-page="${id}" class="${state.page === id ? 'active' : ''}"${state.page === id ? ' aria-current="page"' : ''}>${icon(name)}${label}${id === 'inbox' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('')}
+      ${NAV.map(([id, name, label]) => `<button data-page="${id}" class="${state.page === id ? 'active' : ''}"${state.page === id ? ' aria-current="page"' : ''}>${icon(name)}${id==='log'&&!d.mission?.capabilities.includes('commerce')?'Activity log':label}${id === 'inbox' && pending ? `<span class="count">${pending}</span>` : ''}</button>`).join('')}
     </nav>
     <div class="sidebar-bottom">
       <div class="owner">
@@ -139,7 +141,7 @@ function shell() {
       </div>
       <div class="top-actions">
         <span class="timestamp muted">${money(d.metrics.dailyUsedUsd)} spent today</span>
-        <button class="state-badge status-${status.toLowerCase()}" data-action="${status === 'RUNNING' ? 'pause' : 'start'}" title="${status === 'RUNNING' ? 'Pause the company' : 'Start the company'}">
+        <button class="state-badge status-${status.toLowerCase()}" data-action="${status === 'RUNNING' ? 'pause' : 'start'}" title="${status === 'RUNNING' ? 'Pause the team' : 'Start the team'}">
           <span class="live-dot ${status === 'RUNNING' ? '' : 'off'}"></span>${titleCase(status)}
         </button>
         <button class="quiet small" data-action="shortcuts" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts">${icon('branch')}</button>
@@ -286,7 +288,7 @@ function showShortcutsModal() {
     <div class="shortcuts-grid">
       <div class="shortcut-group">
         <h3>Navigation (press <kbd>g</kbd> then key)</h3>
-        ${NAV.map(([id,,label]) => `<div class="shortcut-item"><kbd>g</kbd> <kbd>${({orders:'u',overview:'o',experiments:'p',work:'w',inbox:'i',finance:'m',team:'t',conversations:'v',documents:'d',email:'e',models:'r',log:'l',settings:'c'})[id]}</kbd> <span>${esc(label)}</span></div>`).join('')}
+        ${NAV.map(([id,,label]) => `<div class="shortcut-item"><kbd>g</kbd> <kbd>${({missions:'n',orders:'u',overview:'o',experiments:'p',work:'w',inbox:'i',finance:'m',team:'t',conversations:'v',documents:'d',email:'e',models:'r',log:'l',settings:'c'})[id]}</kbd> <span>${esc(label)}</span></div>`).join('')}
       </div>
       <div class="shortcut-group">
         <h3>Inbox & Proposals</h3>
@@ -445,9 +447,10 @@ document.addEventListener('click', async (e) => {
     if (ACTIONS[action]) return ACTIONS[action]();
     if (action === 'logout') { if (!window.confirm('Sign out of the dashboard?')) return; await api('/auth/logout', 'POST', {}); showLogin(); return; }
     if (action === 'start' || action === 'pause') {
+      if(action==='start'&&(!state.data.mission||needsMission())){state.page='overview';renderPage();toast('Choose a mission before starting the team.');return;}
       await api('/company/status', 'POST', { status: action === 'start' ? 'RUNNING' : 'PAUSED' });
       await refresh(true);
-      toast(action === 'start' ? 'The company is running.' : 'Paused. No new work will start.');
+      toast(action === 'start' ? 'The team is running.' : 'Paused. No new work will start.');
     }
   } catch (error) {
     toast(error.message);
@@ -504,6 +507,7 @@ window.addEventListener('keydown', (e) => {
     clearTimeout(gTimeout);
     const key = e.key.toLowerCase();
     const map = {
+      n: 'missions',
       o: 'overview',
       w: 'work',
       i: 'inbox',
@@ -515,7 +519,6 @@ window.addEventListener('keydown', (e) => {
       c: 'settings',
       s: 'settings',
       p: 'experiments',
-      e: 'experiments',
     };
     if (map[key]) {
       e.preventDefault();

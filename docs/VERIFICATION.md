@@ -77,3 +77,26 @@ Every newly proposed email freezes an identifying sender/opt-out footer. All To/
 V1 deliberately supports explicit lists, not dynamic selection rules or template substitution. Agent lists require a fetched source containing the exact address; owner lists are explicitly supplied. This verifies provenance, not consent, suitability, or whether an address is personal. Agents are forbidden to guess or scrape personal addresses. Ambiguous natural-language opt-outs still need review; no automatic re-subscription exists.
 
 Validation: 23 focused tests passed across campaigns, email, mission capabilities, reset and persistence. Build/typecheck and isolated dashboard smoke passed. All provider sends and inbound messages were synthetic.
+
+## Step 8: owner experience and final consistency
+
+First-run Overview offers six mission templates and custom objectives, boundaries, acceptance conditions, budget, deadline and capability controls. Creation/activation leaves the team paused. Overview leads with mission progress, spend/holds and owner requests; Missions retains past costs and exact submitted deliverables. Completion, department and campaign requests use dedicated decision controls rather than generic request resolution. Boundary changes update the active mission. General-purpose screens use team/mission language; commerce remains available.
+
+Final review added migration 21 to attribute global events to the current mission, while preserving linked historical work. It also closes a delegated-budget gap: external costs/holds and reserved meeting allocations now count alongside model usage before further delegation or dispatch. Authority grants cannot migrate implicitly into a different mission. Two older tests/fixtures assumed unlimited child estimates; they now exercise bounded allocations.
+
+Validation: the final full suite passed **312 tests**, with **1 optional Docker test skipped** (70 passing files, one skipped). Build and typecheck passed. Both populated and first-run smoke scenarios passed **14 navigation sections**, document detail/citations and zero uncaught browser errors; first-run asserts PAUSED, an active research mission and zero tasks. A subsequent prompt-only cleanup passed all 6 mission/plan capability tests and build/typecheck; it checks every disabled operation name, not only a subset. No live messages, paid calls, private database migration, website edits or remote pushes occurred.
+
+Final prompt estimates include the new campaign functionality and final guide cleanup. Same measurement method and synthetic inputs as Step 6:
+
+| Template | PLAN before / final | WORK before / final |
+|---|---:|---:|
+| research | 6,387 / 5,144 | 19,214 / 11,776 |
+| outreach | 6,397 / 5,276 | 19,224 / 15,696 |
+| market-scan | 6,392 / 5,149 | 19,219 / 11,781 |
+| content | 6,386 / 5,143 | 19,213 / 11,775 |
+| business | 6,537 / 5,886 | 19,364 / 19,652 |
+| custom | 6,335 / 4,998 | 19,162 / 10,911 |
+
+The all-capability business WORK prompt grew slightly overall because it also gained campaign tooling. Filtering savings are meaningful for narrower missions, but 8K WORK capacity remains insufficient for these measured contexts. The Step 6 commit records the isolated filtering comparison before campaigns were added.
+
+Owner review: choose finite-mission acceptance criteria, total budget and stall threshold (default five cycles); delegated allocations are now hard constraints as requested. Configure Brave and its query price only if search is desired. Review explicit outreach lists and templates before granting campaign authority. Keep the optional website simulator sync separate. The pre-existing DEMO.md addition remains unchanged and uncommitted.

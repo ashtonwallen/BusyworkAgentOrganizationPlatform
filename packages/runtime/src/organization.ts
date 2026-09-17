@@ -1,3 +1,4 @@
+import {remainingTaskAllocation} from './delegated-budget.js';
 import {proposeCampaign,readCampaign} from './campaigns.js';
 import {assertMissionOperation} from './mission-capabilities.js';
 import {cancelAssignedWork} from './task-cancellation.js';
@@ -590,10 +591,7 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
     });
   }
   async remainingAllocation(tx: Tx, source: Row) {
-    const children = await one(tx, "SELECT COALESCE(SUM(budget),0)::text AS cost,COALESCE(SUM(token_budget),0)::text AS tokens FROM tasks WHERE parent_id=$1", [source.id]);
-    const meetings = await one(tx, "SELECT COALESCE(SUM(budget),0)::text AS cost,COALESCE(SUM(token_budget),0)::text AS tokens FROM meetings WHERE source_task_id=$1 AND status='SCHEDULED'", [source.id]);
-    const used = await this.service.taskExposure(tx, source.id);
-    return { cost: BigInt(source.budget) - BigInt(children.cost) - BigInt(meetings.cost) - used.cost, tokens: source.token_budget - Number(children.tokens) - Number(meetings.tokens) - used.tokens };
+    return remainingTaskAllocation(tx,source);
   }
   async runMeetings() {
     await this.service.db.transaction(async (tx) => {
@@ -640,6 +638,12 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
     this.service.model(input.ceoModelId);
     await this.service.db.transaction(async (tx) => {
       await tx.query("UPDATE company SET mandate=$1,max_depth=$2,max_agents=$3,max_concurrency=$4,ceo_model_id=$5,ceo_review_model_id=$6,cycle_budget=$7,cycle_tokens=$8,cycle_interval_minutes=$9,revision=revision+1 WHERE id=1", [input.mandate, input.maxDepth, input.maxAgents, input.maxConcurrency, input.ceoModelId, null, parseUsd(input.cycleBudgetUsd).toString(), input.cycleTokens, input.cycleIntervalMinutes]);
+      const mission=await currentMission(tx);
+      if(mission&&mission.boundaries!==input.mandate){
+        if(mission.status==='COMPLETING')throw new DomainError('Return the mission to active work before changing its boundaries.');
+        await tx.query('UPDATE missions SET boundaries=$2,revision=revision+1 WHERE id=$1',[mission.id,input.mandate]);
+        await event(tx,'mission.boundaries_updated',mission.id,{},'owner');
+      }
       await tx.query("UPDATE employees SET charter=$1,model_id=$2 WHERE role='CEO' AND status='ACTIVE'", [input.mandate, input.ceoModelId]);
       await event(tx, "company.operating_mandate_updated", "company", input, "owner");
     });

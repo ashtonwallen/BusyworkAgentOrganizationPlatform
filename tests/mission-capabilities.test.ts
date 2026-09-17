@@ -36,6 +36,6 @@ it('filters noncommercial model context and guides in PLAN and WORK',async()=>{
  model.adapter.generate=async request=>{requests.push(request);const result=await generate(request);if((request.input as any).phase==='WORK')for(const key of Object.keys(result.output as any))if(!Object.hasOwn((request.outputSchema as any).properties,key))delete (result.output as any)[key];return result;};
  await service.createTask({objective:'Research an internal question.'});await service.setStatus('RUNNING');const worker=new Worker(service);await worker.runNext();await worker.runNext();
  expect(requests.map(r=>r.input.phase)).toEqual(['PLAN','WORK']);
- for(const request of requests){expect(request.system).not.toContain('SAVE_ORDER');expect(request.system).not.toContain('BUSINESS_EMAIL_SEND');expect(request.system).not.toContain('RUN_PYTHON');expect(request.input).not.toHaveProperty('businessEmail');expect(request.input).not.toHaveProperty('customerOrders');expect(request.system).toContain('SEARCH_WEB');}
+ for(const request of requests){const disabled=artifactSchema.shape.operations.element.shape.type.options.filter(name=>!enabledOperations(['core','documents','research']).includes(name));expect(disabled.filter(name=>new RegExp('\\b'+name+'\\b').test(request.system))).toEqual([]);expect(request.input).not.toHaveProperty('businessEmail');expect(request.input).not.toHaveProperty('customerOrders');expect(request.system).toContain('SEARCH_WEB');}
  }finally{await db.close();}
 });

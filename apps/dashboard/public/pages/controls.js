@@ -7,9 +7,9 @@ import { THEMES, currentTheme, currentMode } from '../lib/theme.js';
 const GATES = [
   ['expenses', 'Other spending', 'Purchases and charges require approval. Paid model calls use their separate setting.'],
   ['modelCalls', 'Paid model calls', 'Require approval before each paid model call. When off, calls run automatically within enabled spending caps and per-call model limits.'],
-  ['communications', 'Messages to outsiders', 'Anything sent to a customer, vendor or anyone outside the company.'],
+  ['communications', 'Messages to outsiders', 'Anything sent to a customer, vendor or anyone outside the team.'],
   ['publishing', 'Publishing', 'Content going public, and changes to outside systems.'],
-  ['accounts', 'Accounts & commitments', 'Signing up, agreeing to terms, committing the business.'],
+  ['accounts', 'Accounts & commitments', 'Signing up, agreeing to terms, making an external commitment.'],
   ['research', 'Reading public pages', 'Agents fetching a public web page. Costs nothing, but reaches outside.'],
   ['otherExternal', 'Anything else outside', 'Unfamiliar workflows arrive as a written proposal.'],
 ];
@@ -99,7 +99,7 @@ export function controls() {
   const theme = currentTheme();
 
   return pageTitle('Controls', 'Approval policy, budgets, runtime limits and appearance.')
-    + card('Company records', records(), {
+    + card(d.mission?.capabilities.includes('commerce')?'Company records':'Organization records', records(), {
       subtitle: 'Assets, accounts and constraints every agent reads before it plans',
       aside: button('Add record', 'new-record', 'plus', false),
     })
@@ -148,11 +148,11 @@ export function controls() {
           ${helpTip('Theme and mode are saved in this browser.')}
         </div>`)}
 
-        ${card('Company runtime', `<div class="card-body">
+        ${card(d.mission?.capabilities.includes('commerce')?'Company runtime':'Team runtime', `<div class="card-body">
           <button class="btn-icon" data-action="mandate">${icon('compass')}Mandate, CEO model & delegation limits</button>
           ${helpTip("The mandate is the boundary you set. Inside it, the CEO chooses the strategy — see the direction on your overview.")}
           <div class="danger-zone">
-            ${d.company.status === 'RUNNING' ? button('Pause', 'pause', 'pause', false) : button('Start company', 'start', 'play', true)}
+            ${d.company.status === 'RUNNING' ? button('Pause', 'pause', 'pause', false) : button(d.mission?.capabilities.includes('commerce')?'Start company':'Start team', 'start', 'play', true)}
             <button class="danger btn-icon" data-action="kill">Stop everything</button>
           </div>
           ${helpTip("Stopping blocks new work. Calls already sent can still finish and still cost money; those results are recorded either way.")}

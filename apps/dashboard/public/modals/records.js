@@ -1,3 +1,4 @@
+import {showMissionCompletion} from '../pages/missions.js';
 import { actionOutcomeText } from '../lib/record-display.js';
 import {showWorkspace} from './workspace.js';
 import { modelLabel, taskProblem } from '../lib/task-status.js';
@@ -235,6 +236,11 @@ export async function showProposal(id) {
 export function showRequest(id) {
   const r = state.data.requests.find((x) => x.id === id);
   if (!r) return;
+  let structured;try{structured=JSON.parse(r.details);}catch{}
+  if(structured?.kind==='MISSION_COMPLETION')return showMissionCompletion(r,structured);
+  if(structured?.kind==='CAMPAIGN_APPROVAL'){openModal(r.title,`<p>Review the exact template, recipient list, send cap and time window.</p><button data-campaign-view="${esc(structured.campaignId)}">Review campaign</button>`);return;}
+  if(structured?.kind==='DEPARTMENT'){openModal(r.title,`<p>${esc(structured.purpose)}</p>`+form('<p>Creating a department does not hire staff or change headcount limits.</p>'+selectField('Decision','decision',[['APPROVE','Approve department'],['DECLINE','Decline']]),'Record decision'));handleModal(values=>values.decision==='APPROVE'?api('/departments/proposals/'+id+'/approve','POST',{}):api('/requests/'+id+'/resolve','POST',{status:'DECLINED',response:'Department proposal declined.',minutes:0}),'Department decision recorded.');return;}
+
   openModal(r.title, `<p class="detail-objective">${esc(r.details)}</p>
     <p class="muted">Asked ${ago(r.created_at)}. Only you can do this one — it needs something outside the software.</p>`
     + (r.status === 'OPEN'

@@ -66,7 +66,7 @@ export function proposalList(limit = 3) {
   const asks = shownRequests.map((r) => `<div class="proposal">
       <div class="proposal-top">
         <div class="proposal-icon">${icon('chat')}</div>
-        <div><h3>${esc(r.title)}</h3><p class="proposal-why">${truncate(r.details, 150)}</p></div>
+        <div><h3>${esc(r.title)}</h3><p class="proposal-why">${truncate((()=>{try{const value=JSON.parse(r.details);return value.kind==='MISSION_COMPLETION'?'Review evidence and the submitted deliverable.':value.kind==='CAMPAIGN_APPROVAL'?'Review the exact campaign template and sending limits.':value.kind==='DEPARTMENT'?value.purpose:r.details;}catch{return r.details;}})(),150)}</p></div>
       </div>
       <div class="proposal-meta"><span class="muted">Needs you, not money</span><span class="muted">${ago(r.created_at)}</span></div>
       <div class="proposal-actions"><button data-request="${r.id}">Respond</button></div>

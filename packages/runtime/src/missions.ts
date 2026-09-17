@@ -16,7 +16,8 @@ export const missionInput=z.object({template:z.string(),title:z.string().trim().
  budgetUsd:z.string().regex(/^\d+(?:\.\d{1,6})?$/).nullable(),deadline:z.iso.datetime().nullable().default(null),
  capabilities:z.array(capabilityFamily).min(1),deliverable:z.string().trim().min(1).max(2000),stallCycles:z.number().int().min(1).max(100).default(5)
 }).strict().refine(value=>value.kind==='ONGOING'||value.definitionOfDone.length>0,'Finite missions need observable completion conditions.')
- .refine(value=>value.capabilities.includes('core'),'Core organization and communication must remain enabled.');
+ .refine(value=>value.capabilities.includes('core'),'Core organization and communication must remain enabled.')
+ .refine(value=>value.kind!=='FINITE'||value.capabilities.includes('documents'),'Finite missions require documents for their durable completion deliverable.');
 
 export async function currentMission(tx:Pick<Tx,'query'>){
  return (await tx.query<Row>("SELECT * FROM missions WHERE status IN ('ACTIVE','COMPLETING') LIMIT 1")).rows[0]??null;

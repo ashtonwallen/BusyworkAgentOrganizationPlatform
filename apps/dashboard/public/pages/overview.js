@@ -1,3 +1,4 @@
+import {needsMission,missionPicker,missionCard} from './missions.js';
 import {failureDismissed} from '../lib/alerts.js';
 import { state, pendingCount, ACTIVE_TASK, employeeName } from '../lib/state.js';
 import { esc, money, micro, date, ago, badge, truncate } from '../lib/format.js';
@@ -50,6 +51,7 @@ function latestDecisions() {
 
 export function overview() {
   const d = state.data;
+  if(needsMission())return missionPicker();
   const m = d.metrics;
   const active = d.tasks.filter(ACTIVE_TASK);
   const staff = (d.employees || []).filter((e) => e.status === 'ACTIVE');
@@ -58,13 +60,15 @@ export function overview() {
 
   const controls = running
     ? button('Pause agents', 'pause', 'pause', false)
-    : button('Start company', 'start', 'play', true);
+    : button(d.mission?.capabilities.includes('commerce')?'Start company':'Start team', 'start', 'play', true);
 
+  if(!d.mission?.capabilities.includes('commerce'))return pageTitle('Overview',running?'The team is running.':'The team is paused.',controls)+missionCard()+attentionStrip()+`<div class="grid-2"><div>${card('Active work',taskTable(active.slice(0,8),{emptyTitle:'No active tasks',emptyBody:'The CEO organizes work for the active mission.'}),{aside:link('All work','work')})}${card('Recent decisions',latestDecisions())}</div><div>${card('Pending decisions',proposalList(5),{footer:link('Approvals','inbox')})}${card('Recent activity',activityFeed(8),{footer:link('Activity log','log')})}</div></div>`;
   return pageTitle(
     'Overview',
     running ? `${staff.length} ${staff.length === 1 ? 'agent is' : 'agents are'} working. ` : 'The company is not running. ',
     controls,
   )
+    + missionCard()
     + attentionStrip()
     + (d.ceoCycle && ['FAILED', 'EXPIRED'].includes(d.ceoCycle.status) && !d.ceoCycle.acknowledged && !failureDismissed(d.tasks.find(t=>t.id===d.ceoCycle.id))
       ? card('Previous CEO cycle failed', `<div class="card-body"><p>${esc(d.ceoCycle.error || 'The last CEO cycle did not complete.')}</p>

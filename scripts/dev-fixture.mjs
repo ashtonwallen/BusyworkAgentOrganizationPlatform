@@ -234,7 +234,7 @@ async function seed() {
   });
 }
 
-await seed();
+if(!process.argv.includes('--empty'))await seed();
 await app.listen({ port, host: "127.0.0.1" });
 console.log(`Dev fixture dashboard: http://127.0.0.1:${port}`);
 console.log(`Access key: ${token}`);

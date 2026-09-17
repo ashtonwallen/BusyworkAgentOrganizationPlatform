@@ -17,7 +17,7 @@ it('archives business history atomically, preserves setup and starts a fresh pau
   expect((await db.query('SELECT * FROM company_records')).rows).toHaveLength(0);
   expect((await one(db,`SELECT id FROM ${result.archive}.tasks`)).id).toBe(task.id);
   expect((await one(db,'SELECT enabled,credential_ciphertext,sync_state FROM email_mailboxes'))).toEqual({enabled:false,credential_ciphertext:'encrypted-fixture',sync_state:{historyId:'cursor'}});
-  expect((await db.query('SELECT * FROM hive_migrations')).rows).toHaveLength(20);
+  expect((await db.query('SELECT * FROM hive_migrations')).rows).toHaveLength(21);
   expect((await one(db,"SELECT payload FROM events WHERE type='model.spending_caps_updated'")).payload).toEqual({enabled:false});
   expect(service.workspaces.root).toContain(result.archive);
   await expect(db.query('DELETE FROM events')).rejects.toThrow();

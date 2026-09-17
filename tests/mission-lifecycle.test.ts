@@ -3,6 +3,7 @@ import {openDatabase,HiveService,createModels,Organization,one,writeDocument} fr
 import {createMission,activateMission,currentMission} from '../packages/runtime/src/missions.js';
 import {requestMissionCompletion,confirmMissionCompletion,missionAdmission,checkMissionStall,missionExposure} from '../packages/runtime/src/mission-lifecycle.js';
 import {ToolGateway,ToolRegistry} from '../packages/runtime/src/tools.js';
+import {assertDelegatedSpend,remainingTaskAllocation} from '../packages/runtime/src/delegated-budget.js';
 
 async function fixture(){
  const db=await openDatabase(),service=new HiveService(db,createModels({})),org=new Organization(service);
@@ -10,6 +11,17 @@ async function fixture(){
  await activateMission(service,id);await db.query("UPDATE company SET ceo_model_id='mock-worker'");
  await service.setStatus('RUNNING');await org.tick();const task=await one(db,'SELECT * FROM tasks');return {db,service,org,task,id};
 }
+it('includes external costs in remaining delegated allocations and external dispatch admission',async()=>{
+ const {db,service,task}=await fixture();try{
+ const child=await service.createTask({parentId:task.id,objective:'Bounded research',budgetUsd:'0.50',tokenBudget:1000,ttlMinutes:10});
+ await db.query("INSERT INTO ledger(id,idempotency_key,account,kind,amount,task_id,description) VALUES('child-cost','child-cost','OPERATING','COST',300000,$1,'Synthetic external cost')",[child.id]);
+ await expect(db.transaction(tx=>assertDelegatedSpend(tx,child.id,210000n))).rejects.toThrow('allocation');
+ await db.transaction(tx=>assertDelegatedSpend(tx,child.id,200000n));
+ await db.query("INSERT INTO ledger(id,idempotency_key,account,kind,amount,task_id,description) VALUES('parent-cost','parent-cost','OPERATING','COST',400000,$1,'Synthetic external cost')",[task.id]);
+ expect((await remainingTaskAllocation(db,task)).cost).toBe(BigInt(task.budget)-900000n);
+ await expect(service.createTask({parentId:task.id,objective:'Excess allocation',budgetUsd:(Number(task.budget)/1e6-0.89).toFixed(6),tokenBudget:1000,ttlMinutes:10})).rejects.toThrow('parent remaining');
+ }finally{await db.close();}
+});
 it('requires real condition evidence and an exact deliverable, then owner confirmation, before completion',async()=>{
  const {db,service,org,task,id}=await fixture();try{
   await db.transaction(tx=>writeDocument(tx,{path:'report.md',title:'Report',content:'Recorded findings and limitations.',expectedVersion:0},task.employee_id,task.id));

@@ -100,10 +100,10 @@ const soon = (ms) => localDateTime(new Date(Date.now() + ms));
 export function companyMandate() {
   const c = state.data.company;
   const choices = readyModels().map((m) => [m.id, `${m.name}${m.live ? ' (paid)' : ''}`]);
-  openModal('Mandate & limits',
+  openModal('Mission boundaries and team limits',
     '<p class="modal-lede">The mandate is the boundary you set for the company. Inside it the CEO chooses the strategy itself — you do not need to describe a business here, only what it must and must not do.</p>'
     + form(
-      field('What the company must and must not do', 'mandate', c.mandate, 'textarea')
+      field('What the team must and must not do', 'mandate', state.data.mission?.boundaries||c.mandate, 'textarea')
       + `<div class="form-grid">
         ${selectField('CEO runs on', 'ceoModelId', choices, c.ceo_model_id)}
         ${field('Deepest hierarchy', 'maxDepth', c.max_depth, 'number', 'How many levels below the CEO')}

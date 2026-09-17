@@ -1,3 +1,4 @@
+import {assertDelegatedSpend} from './delegated-budget.js';
 import {assertMissionExternal} from './mission-capabilities.js';
 import {recoverDeploymentCreations} from './deployments.js';
 import {recordSource} from './source-records.js';
@@ -63,7 +64,7 @@ export class ToolGateway {
     const names=this.registry.list().map(tool=>tool.name);if(!names.length)return;
     const candidates=await this.service.db.query<Row>(`SELECT a.id,a.action_type FROM actions a
       WHERE a.status IN ('PENDING','APPROVED') AND a.expires_at>$1 AND a.action_type=ANY($2::text[])
-      AND (a.status='APPROVED' OR (a.revises_action_id IS NULL AND EXISTS(SELECT 1 FROM grants g WHERE g.action_type=a.action_type AND g.target=a.target AND NOT g.revoked AND g.expires_at>$1 AND (g.experiment_id IS NULL OR g.experiment_id=a.experiment_id))))
+      AND (a.status='APPROVED' OR (a.revises_action_id IS NULL AND EXISTS(SELECT 1 FROM grants g WHERE g.action_type=a.action_type AND g.target=a.target AND g.mission_id=a.mission_id AND NOT g.revoked AND g.expires_at>$1 AND (g.experiment_id IS NULL OR g.experiment_id=a.experiment_id))))
       ORDER BY CASE WHEN a.status='APPROVED' THEN 0 ELSE 1 END,a.created_at,a.id LIMIT 30`,[this.service.now(),names]);
     // Complete at most one external dispatch per tick so queued internal work also gets a turn.
     for(const a of candidates.rows){try{await this.execute(a.id);break;}catch(error){if(!(error instanceof DomainError))throw error;}}
@@ -83,6 +84,7 @@ export class ToolGateway {
       if(tool.version!==1)throw new DomainError('Tool version changed; submit a new version-bound proposal.');
       try{tool.validate?.(a.target,a.payload);}catch{throw new DomainError('Tool request or provider pricing changed; prepare a valid new proposal.');}
       const maximum=parseUsd(tool.maximumCostUsd);if(BigInt(a.max_cost)<maximum)throw new DomainError('Proposal does not cover the tool cost bound.');
+ await assertDelegatedSpend(tx,a.task_id,BigInt(a.max_cost));
       const missionBlocked=await missionAdmission(tx,a.mission_id,BigInt(a.max_cost));
       if(missionBlocked)return {blocked:missionBlocked} as const;
       // Only the typed, price-bound search contract enables paid gateway calls.
@@ -104,7 +106,7 @@ export class ToolGateway {
         const approval=await one(tx,"SELECT * FROM approvals WHERE action_id=$1",[id]);if(approval.decision!=='APPROVE'||approval.action_hash!==a.action_hash)throw new DomainError('Approval does not match this action.');
       }else{
         if(a.revises_action_id || c.approval_policy[tool.approvalCategory]!==false)throw new DomainError('This external action requires owner approval.');
-        const rows=await tx.query<Row>("SELECT * FROM grants WHERE action_type=$1 AND target=$2 AND NOT revoked AND expires_at>$3 AND (experiment_id IS NULL OR experiment_id=$4) ORDER BY created_at,id FOR UPDATE",[a.action_type,a.target,this.service.now(),a.experiment_id]);
+        const rows=await tx.query<Row>("SELECT * FROM grants WHERE action_type=$1 AND target=$2 AND NOT revoked AND expires_at>$3 AND (experiment_id IS NULL OR experiment_id=$4) AND mission_id=$5 ORDER BY created_at,id FOR UPDATE",[a.action_type,a.target,this.service.now(),a.experiment_id,a.mission_id]);
         for(const g of rows.rows){const used=await one(tx,"SELECT COALESCE(SUM(COALESCE(settled,0)+reservation),0)::text AS amount FROM actions WHERE grant_id=$1",[g.id]);if(BigInt(a.max_cost)<=BigInt(g.max_transaction)&&BigInt(a.max_cost)+BigInt(used.amount)<=BigInt(g.total_cap)){grantId=g.id;break;}}
         if(!grantId)throw new DomainError('No matching active authority exists for this external action.');
       }

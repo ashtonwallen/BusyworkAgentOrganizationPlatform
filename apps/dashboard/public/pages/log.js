@@ -49,7 +49,7 @@ export function log() {
     <span class="muted">Append-only audit</span>
   </div>`;
 
-  return pageTitle('Company log', 'Everything that happened, in order. This record cannot be edited or deleted.')
+  return pageTitle(state.data.mission?.capabilities.includes('commerce')?'Company log':'Activity log', 'Everything that happened, in order. This record cannot be edited or deleted.')
     + `<label class="log-traffic"><input type="checkbox" data-log-routine ${state.logRoutine?'checked':''}> Show routine model traffic</label><div class="log-toolbar">
         <div class="log-filters">${filters.map(([key, label, count]) => `<button class="filter ${state.logFilter === key ? 'selected' : ''}" data-log-filter="${key}">${esc(label)}<span>${count}</span></button>`).join('')}</div>
         <div class="log-actions"><button class="button small quiet" data-action="load-newer-events" data-after="${maxSeq}">${icon('refresh')} Check for new events</button></div>

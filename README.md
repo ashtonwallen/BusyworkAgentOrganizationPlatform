@@ -27,13 +27,15 @@ npm start
 
 On Windows PowerShell, use `npm.cmd` if your execution policy blocks `npm.ps1`.
 
-Open http://127.0.0.1:3001 and sign in with the generated key in `data/owner-token.txt`. Keep the terminal open. Stop the server with Ctrl+C; restart with `npm start`. State persists in `data/postgres` and agent files in `data/workspaces`. The company initially starts **paused**. Restarts preserve the stored state, so pause it in Controls before stopping if you want it to remain paused after restart.
+Open http://127.0.0.1:3001 and sign in with the generated key in `data/owner-token.txt`. Keep the terminal open. Stop the server with Ctrl+C; restart with `npm start`. State persists in `data/postgres` and agent files in `data/workspaces`. The team initially starts **paused**. Restarts preserve the stored state, so pause it in Controls before stopping if you want it to remain paused after restart.
 
-Choose a worker before starting the company:
+On first run, choose a template or custom mission under **What should your team work on?** Set its outcome, acceptance conditions, boundaries, deliverable and budget. The CEO chooses the strategy. Existing installations keep their original mandate as an ongoing **Run a business** mission.
+
+Choose a worker before starting the team:
 
 1. **Local:** start LM Studio's API server at `http://localhost:1234/v1` with a model loaded. In Models, refresh availability. Busywork discovers the loaded model; no specific model or GPU is required by the application. Model memory, context size, and output quality determine whether your tasks are practical.
 2. **Paid:** copy `.env.example` to a private `.env`, add your provider key, and restart. In Models, configure a model ID. Unknown pricing must be established before a paid call can be admitted. A key alone does not authorize spending.
-3. Review Controls, select the CEO model, and start the company when ready. You do not launch individual workers manually; the CEO hires within the configured limits.
+3. Review Controls, select the CEO model, and start the team when ready. You do not launch individual workers manually; the CEO hires within the configured limits.
 
 No local server and no configured keys is a supported setup state: the dashboard works, explains the missing worker, and does not substitute a mock agent for real inference. Public endpoints are not automatically probed with paid inference.
 
@@ -53,7 +55,7 @@ Your keys, model registry, owner details, payment destinations, and data are pri
 | `HIVE_CONFIG_DIR` | Private JSON seed files and extra worker registry | `config` |
 | `HIVE_DATA_DIR` | Database, workspaces, and locally generated keys | `data` |
 | `HIVE_PAYMENT_INFO_FILE` | Optional receiving-address record | `Payment_Info_Venmo_Crypto.txt` |
-| `HIVE_COMPANY_NAME` | The business identity presented to agents | `My business` |
+| `HIVE_COMPANY_NAME` | The organization identity presented to agents | `My business` |
 | `HIVE_BUSINESS_EMAIL` | Account to connect through Gmail OAuth | Unconfigured |
 | `PORT` | Loopback dashboard port | `3001` |
 
@@ -63,15 +65,26 @@ The optional JSON files are `models.json`, `company-records.json`, `owner-remind
 
 ## Spending and external actions
 
-This software can spend real money through your API keys, send real email, and publish real sites when configured and authorized. The operator is responsible for their keys, recipients, content, actions, and spending. Read [security and execution boundaries](SECURITY.md) before enabling the business.
+This software can spend real money through your API keys, send real email, and publish real sites when configured and authorized. The operator is responsible for their keys, recipients, content, actions, and spending. Read [security and execution boundaries](SECURITY.md) before enabling the team.
 
 Fresh installations require approval for expenses, paid model calls, communications, publishing, and account actions. SMS notifications are off. The dashboard binds to loopback and requires its owner key. The testing-only sign-in bypass is off. Model and task estimates are not deposited funds or independent bank balances.
 
 Approvals are configurable: disabling them changes your exposure. Approval does not install an unsupported executor. Paid inference, SMS notifications, external communications, and publishing have distinct controls. Source content and inbound email are untrusted and can contain prompt injection; controls reduce risk but do not establish immunity.
 
+## Missions and completion
+
+Only one mission can be active (or awaiting completion review) at a time. Finite missions stop scheduling work when the CEO submits completion evidence and a versioned deliverable; only your confirmation marks them completed. Lack of recorded progress triggers a configurable stall escalation. Ongoing missions retain recurring CEO cycles.
+
+A mission's total cap is additional to daily and lifetime controls. Settled costs and unresolved reservations count against it. Delegated tasks cannot allocate more money or tokens than their parent has remaining. A cap or deadline pause appears on Overview with a review/resume control; unresolved charges are never erased by resuming or stopping.
+
+Enabled capability families determine both the instructions agents receive and the operations they may execute. Capability availability does not waive approval. Research documents can attach claims to immutable source receipts; uncited claims must be marked inference or hypothesis. Citation records establish provenance, not truth or complete coverage of unstructured prose.
+
+The Missions page retains prior objectives, recorded spend, acceptance evidence and exact deliverable versions. See [mission setup and operation](docs/MISSIONS.md) and [verification results and prompt measurements](docs/VERIFICATION.md).
+
 ## Optional integrations
 
-- **Gmail / Google Workspace:** bring your own OAuth client and mailbox. Configure the Gmail API and appropriate consent settings before connecting. This repository provides no shared verified OAuth application.
+- **Web search:** configure your own Brave Search key and explicit per-query price. Searches use the research approval gateway and reserve configured costs before dispatch. Unconfigured search is unavailable; agents must not fabricate source URLs.
+- **Gmail / Google Workspace:** bring your own OAuth client and mailbox. Configure the Gmail API and appropriate consent settings before connecting. This repository provides no shared verified OAuth application. Exact-template campaigns can be approved for a bounded explicit recipient list, send cap and time window. All sends enforce the do-not-contact list; new proposals freeze sender identification and an opt-out footer.
 - **Twilio:** bring your own account, sender, recipient, and explicit SMS cost limits. Outbound notifications work without a reply webhook; signed replies require a publicly reachable endpoint. Country, sender and campaign requirements apply.
 - **Netlify:** bring your own token and site ID. Publishing binds an approved release to exact files and the configured destination. No general account creation or arbitrary hosting provisioning is provided.
 - **Isolated Python:** optional Docker Linux engine, pinned image, no network or host mounts for agent programs. No unrestricted shell, desktop automation, or agent modification of Busywork source is provided.

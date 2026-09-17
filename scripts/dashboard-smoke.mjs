@@ -12,7 +12,8 @@ const port=listener.address().port;
 await new Promise(resolve=>listener.close(resolve));
 const url=`http://127.0.0.1:${port}`;
 const token='isolated-dashboard-smoke-fixture';
-const server=spawn(process.execPath,['scripts/dev-fixture.mjs','--port',String(port)],{
+const onboarding=process.argv.includes('--onboarding');
+const server=spawn(process.execPath,['scripts/dev-fixture.mjs','--port',String(port),...(onboarding?['--empty']:[])],{
  cwd:root,stdio:['ignore','pipe','pipe'],env:{PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,
  HIVE_FIXTURE_TOKEN:token,HIVE_BUSINESS_EMAIL:'busywork@example.com',HIVE_COMPANY_NAME:'Example team'},
 });
@@ -25,12 +26,25 @@ try{
   catch(error){if(server.exitCode!==null||Date.now()>deadline)throw new Error('Fixture failed to start: '+output);await new Promise(r=>setTimeout(r,200));}
  }
  browser=await chromium.launch();const page=await browser.newPage();const errors=[];
- page.on('pageerror',error=>errors.push(error.message));
+ page.on('pageerror',error=>{errors.push(error.message);console.error('Dashboard error:',error.stack);});
  // The only permitted browser requests are to this disposable fixture.
  await page.route('**/*',route=>new URL(route.request().url()).origin===url?route.continue():route.abort());
  await page.goto(url);await page.locator('#owner-key').fill(token);
  await page.getByRole('button',{name:'Open dashboard',exact:true}).click();
  await page.locator('#content .page-title').waitFor();
+ if(onboarding){
+  await page.getByRole('heading',{name:/^What should your team work on/}).waitFor();
+  await page.locator('[data-mission-template="research"]').click();
+  await page.locator('[name="title"]').fill('Synthetic research mission');
+  await page.locator('[name="objective"]').fill('Answer a synthetic fixture question with recorded evidence.');
+  await page.getByRole('button',{name:'Create mission',exact:true}).click();
+  await page.locator('#modal').waitFor({state:'hidden'});
+  await page.getByRole('heading',{name:'Synthetic research mission',exact:true}).waitFor();
+  const snapshot=await page.evaluate(()=>fetch('/v1/snapshot').then(r=>r.json()));
+  assert.equal(snapshot.company.status,'PAUSED');assert.equal(snapshot.mission.template,'research');
+  assert.equal(snapshot.mission.status,'ACTIVE');assert.equal(snapshot.tasks.length,0);
+ }
+
  const seeded=await page.evaluate(async()=>{const response=await fetch('/v1/documents',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:'smoke/report.md',title:'Synthetic report',content:'A synthetic hypothesis for UI verification.',expectedVersion:0,claims:[{text:'Synthetic hypothesis.',kind:'HYPOTHESIS',sourceIds:[]}]})});return response.status;});
  assert.equal(seeded,200,'Synthetic document could not be created');
  const pages=await page.locator('nav [data-page]').evaluateAll(nodes=>nodes.map(node=>node.dataset.page));
@@ -43,7 +57,7 @@ try{
  await page.locator('nav [data-page="documents"]').click();
  await page.locator('#content [data-document]').first().click();
  await page.getByRole('heading',{name:'Claims and citations',exact:true}).waitFor();
- assert.deepEqual(errors,[]);console.log(JSON.stringify({pages:pages.length,documentDetail:true,browserErrors:0,synthetic:true}));
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({pages:pages.length,documentDetail:true,onboarding,browserErrors:0,synthetic:true}));
 }finally{
  await browser?.close();
  if(server.exitCode===null){server.kill();await new Promise(resolve=>server.once('exit',resolve));}

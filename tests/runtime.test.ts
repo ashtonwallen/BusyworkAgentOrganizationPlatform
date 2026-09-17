@@ -216,11 +216,12 @@ describe("Durable control plane",()=>{
   it("cannot create work while killed through a worker call",async()=>{
     await create();await service.setStatus("KILLED");expect(await worker.runNext()).toBe(false);expect((await db.query("SELECT * FROM calls")).rows).toHaveLength(0);
   });
-  it("allows delegated money and token estimates beyond the parent",async()=>{
+  it("rejects delegated allocations beyond the parent remaining money or tokens",async()=>{
     const{id}=await create({budgetUsd:"1",tokenBudget:100000,ttlMinutes:120});
     await create({parentId:id,budgetUsd:"0.75",tokenBudget:50000,ttlMinutes:60});
-    await expect(create({parentId:id,budgetUsd:"2.00",tokenBudget:30000,ttlMinutes:60})).resolves.toHaveProperty("id");
-    await expect(create({parentId:id,budgetUsd:"0.10",tokenBudget:60000,ttlMinutes:60})).resolves.toHaveProperty("id");
+    await expect(create({parentId:id,budgetUsd:"2.00",tokenBudget:30000,ttlMinutes:60})).rejects.toThrow("parent remaining");
+    await expect(create({parentId:id,budgetUsd:"0.10",tokenBudget:60000,ttlMinutes:60})).rejects.toThrow("parent remaining");
+    await expect(create({parentId:id,budgetUsd:"0.25",tokenBudget:50000,ttlMinutes:60})).resolves.toHaveProperty("id");
   });
   it("cancels descendants but preserves existing audit history",async()=>{
     const parent=await create({tokenBudget:100000});const child=await create({parentId:parent.id,budgetUsd:"0.25",ttlMinutes:30,tokenBudget:30000});

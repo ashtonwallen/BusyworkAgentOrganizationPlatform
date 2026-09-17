@@ -112,6 +112,7 @@ export async function stopMission(service:HiveService,id:string){
   if(external.count)throw new DomainError('Wait for dispatched external actions before stopping this mission.');
   await tx.query("UPDATE missions SET status='STOPPED',revision=revision+1 WHERE id=$1",[id]);
   await tx.query("UPDATE tasks SET status='CANCELLED',error='Mission stopped by owner.' WHERE mission_id=$1 AND status NOT IN ('COMPLETED','FAILED','EXPIRED','CANCELLED')",[id]);
+  await tx.query("UPDATE owner_requests SET status='DECLINED',response='Mission stopped before completion was confirmed.' WHERE mission_id=$1 AND status='OPEN' AND id IN (SELECT payload->>'requestId' FROM events WHERE type='mission.completion_requested' AND entity_id=$1)",[id]);
   await event(tx,'mission.stopped',id,{},'owner');
  });
 }
@@ -127,6 +128,7 @@ export async function resumeMission(service:HiveService,id:string,raw:unknown){
   await tx.query('UPDATE missions SET budget=$2,deadline=$3,pause_reason=NULL,revision=revision+1 WHERE id=$1',[id,budget,input.deadline===undefined?m.deadline:input.deadline]);
   await tx.query("UPDATE tasks SET status=CASE phase WHEN 'PLAN' THEN 'PLAN_PENDING' WHEN 'REVIEW' THEN 'REVIEW' ELSE 'READY' END,error=NULL WHERE mission_id=$1 AND status='BLOCKED_BUDGET' AND error LIKE 'Mission %'",[id]);
   await event(tx,'mission.progress_checked',id,{cycleId:null,progress:await missionProgress(tx,id),stagnant:0},'owner');
+  await tx.query("UPDATE owner_requests SET status='DONE',response=$2 WHERE mission_id=$1 AND status='OPEN' AND id IN (SELECT payload->>'requestId' FROM events WHERE type='mission.paused' AND entity_id=$1)",[id,input.reason]);
   await event(tx,'mission.resumed',id,{reason:input.reason,budget},'owner');
  });
 }
