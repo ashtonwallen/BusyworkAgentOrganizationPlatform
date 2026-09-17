@@ -14,6 +14,7 @@ import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { openDatabase, HiveService, createModels, actionHash } from "../packages/runtime/dist/index.js";
 import { buildApp } from "../apps/api/dist/app.js";
+import {seedMissionExamples} from './fixture-missions.mjs';
 
 const portArg = process.argv.indexOf("--port");
 const port = portArg > -1 ? Number(process.argv[portArg + 1]) : 3099;
@@ -234,7 +235,10 @@ async function seed() {
   });
 }
 
-if(!process.argv.includes('--empty'))await seed();
+if(!process.argv.includes('--empty')){
+  await seed();
+  await seedMissionExamples(service,{review:process.argv.includes('--mission-review')});
+}
 await app.listen({ port, host: "127.0.0.1" });
 console.log(`Dev fixture dashboard: http://127.0.0.1:${port}`);
 console.log(`Access key: ${token}`);

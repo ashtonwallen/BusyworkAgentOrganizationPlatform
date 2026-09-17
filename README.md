@@ -43,7 +43,7 @@ No local server and no configured keys is a supported setup state: the dashboard
 
 After building, run `npm run demo` and open http://127.0.0.1:3099. The fixture prints a disposable demo access key. It uses an in-memory database and starts no business scheduler. All customers, receipts, staff, and outcomes in this demo are synthetic.
 
-See [reproducible demo capture](docs/DEMO.md). Demo screenshots and recordings are not evidence of business results.
+See [reproducible demo capture](docs/DEMO.md) and [mission demo scenarios](docs/DEMO-MISSIONS.md), including first-run setup and owner-confirmed completion. Demo screenshots and recordings are not evidence of business results.
 
 ## Instance configuration
 

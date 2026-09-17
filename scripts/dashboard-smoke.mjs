@@ -13,7 +13,8 @@ await new Promise(resolve=>listener.close(resolve));
 const url=`http://127.0.0.1:${port}`;
 const token='isolated-dashboard-smoke-fixture';
 const onboarding=process.argv.includes('--onboarding');
-const server=spawn(process.execPath,['scripts/dev-fixture.mjs','--port',String(port),...(onboarding?['--empty']:[])],{
+const missionReview=process.argv.includes('--mission-review');
+const server=spawn(process.execPath,['scripts/dev-fixture.mjs','--port',String(port),...(onboarding?['--empty']:[]),...(missionReview?['--mission-review']:[])],{
  cwd:root,stdio:['ignore','pipe','pipe'],env:{PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,
  HIVE_FIXTURE_TOKEN:token,HIVE_BUSINESS_EMAIL:'busywork@example.com',HIVE_COMPANY_NAME:'Example team'},
 });
@@ -32,6 +33,12 @@ try{
  await page.goto(url);await page.locator('#owner-key').fill(token);
  await page.getByRole('button',{name:'Open dashboard',exact:true}).click();
  await page.locator('#content .page-title').waitFor();
+ if(!onboarding){
+  const snapshot=await page.evaluate(()=>fetch('/v1/snapshot').then(r=>r.json()));
+  assert.equal(snapshot.mission.status,missionReview?'COMPLETING':'ACTIVE');
+  assert.ok(snapshot.missions.some(m=>m.title==='Compare accessible meeting-note tools'&&m.status==='DRAFT'));
+  assert.ok(snapshot.missions.some(m=>m.template==='content'&&m.status===(missionReview?'COMPLETING':'COMPLETED')));
+ }
  if(onboarding){
   await page.getByRole('heading',{name:/^What should your team work on/}).waitFor();
   await page.locator('[data-mission-template="research"]').click();
@@ -57,7 +64,17 @@ try{
  await page.locator('nav [data-page="documents"]').click();
  await page.locator('#content [data-document]').first().click();
  await page.getByRole('heading',{name:'Claims and citations',exact:true}).waitFor();
- assert.deepEqual(errors,[]);console.log(JSON.stringify({pages:pages.length,documentDetail:true,onboarding,browserErrors:0,synthetic:true}));
+ if(missionReview){
+  const result=await page.evaluate(async()=>{
+   const snapshot=await fetch('/v1/snapshot').then(r=>r.json());
+   const mission=snapshot.missions.find(m=>m.status==='COMPLETING');
+   const response=await fetch('/v1/missions/completion/'+mission.completion.requestId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hash:mission.completion.hash,accept:true})});
+   const after=await fetch('/v1/snapshot').then(r=>r.json());
+   return {status:response.status,completed:after.missions.find(m=>m.id===mission.id).status};
+  });
+  assert.equal(result.status,200);assert.equal(result.completed,'COMPLETED');
+ }
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({pages:pages.length,documentDetail:true,onboarding,missionReview,browserErrors:0,synthetic:true}));
 }finally{
  await browser?.close();
  if(server.exitCode===null){server.kill();await new Promise(resolve=>server.once('exit',resolve));}
