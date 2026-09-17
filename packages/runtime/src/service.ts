@@ -1,4 +1,5 @@
 import {instanceSettings} from './instance-settings.js';
+import {currentMission,missionTemplates} from './missions.js';
 import {orderRegister} from './orders.js';
 import {backlogScheduleStatus} from './backlog-scheduling.js';
 import {consultations} from './consultations.js';
@@ -275,6 +276,8 @@ export class HiveService {
         browserAvailable:this.browserAvailable,
         emailOAuthConfigured:this.emailOAuthConfigured,
         instance:instanceSettings,
+        mission:await currentMission(tx),missionTemplates,
+        missions:await query('SELECT * FROM missions ORDER BY created_at DESC'),
         emailMailbox:(await query("SELECT address,provider,enabled,daily_send_limit,last_synced_at,error,credential_ciphertext IS NOT NULL AS connected FROM email_mailboxes WHERE address=$1",[instanceSettings.mailbox]))[0]??null,
         emailPermissions:await query("SELECT e.id,e.name,e.role,COALESCE(p.can_read,e.role='CEO') AS can_read,COALESCE(p.can_send,e.role='CEO') AS can_send FROM employees e LEFT JOIN email_permissions p ON p.employee_id=e.id WHERE e.status='ACTIVE'"),
         emailQueueStatus:await emailQueueStatus(tx,this.now()),
@@ -322,7 +325,7 @@ export class HiveService {
         experimentTotals: await query("SELECT experiment_id,kind,SUM(amount)::text AS amount FROM ledger WHERE experiment_id IS NOT NULL AND account<>'TEST' GROUP BY experiment_id,kind"),
         events: await query("SELECT * FROM events ORDER BY sequence DESC LIMIT 100"), ledger, daily,
         direction: await (async () => {
-          const current = (await query("SELECT d.*,COALESCE(e.name,CASE WHEN d.set_by='owner' THEN 'Owner' ELSE d.set_by END) AS set_by_name FROM directions d LEFT JOIN employees e ON e.id=d.set_by WHERE d.superseded_at IS NULL"))[0];
+          const current = (await query("SELECT d.*,COALESCE(e.name,CASE WHEN d.set_by='owner' THEN 'Owner' ELSE d.set_by END) AS set_by_name FROM directions d LEFT JOIN employees e ON e.id=d.set_by WHERE d.superseded_at IS NULL AND d.mission_id=current_mission_id()"))[0];
           return current ? { ...current, scorecard: await directionScorecard(tx, current.created_at) } : null;
         })(),
         directions: await query("SELECT d.*,COALESCE(e.name,CASE WHEN d.set_by='owner' THEN 'Owner' ELSE d.set_by END) AS set_by_name FROM directions d LEFT JOIN employees e ON e.id=d.set_by ORDER BY d.created_at DESC LIMIT 20"),

@@ -1,4 +1,5 @@
 import {cancelAssignedWork} from './task-cancellation.js';
+import {currentMission,proposeDepartment} from './missions.js';
 import {readBacklog} from './backlog.js';
 import {withdrawOwnEmail} from './email-withdraw.js';
 import {proposeOrderEmail} from './order-email.js';
@@ -176,10 +177,12 @@ export class Organization {
     await this.service.db.transaction(async (tx) => {
       const c = await one(tx, "SELECT * FROM company WHERE id=1 FOR UPDATE");
       if (c.status !== "RUNNING") return;
+      const mission=await currentMission(tx);
+      if(!mission||mission.status!=='ACTIVE'||mission.pause_reason)return;
       const ceo = await this.ensureCEO(tx);
-      const active = await tx.query("SELECT id FROM tasks WHERE employee_id=$1 AND status NOT IN ('COMPLETED','CANCELLED','FAILED','EXPIRED') LIMIT 1", [ceo.id]);
+      const active = await tx.query("SELECT id FROM tasks WHERE employee_id=$1 AND mission_id=$2 AND status NOT IN ('COMPLETED','CANCELLED','FAILED','EXPIRED') LIMIT 1", [ceo.id,mission.id]);
       if (active.rows.length) return;
-      const tasks = await tx.query<Row>("SELECT t.* FROM tasks t WHERE t.employee_id=$1 AND EXISTS(SELECT 1 FROM events e WHERE e.entity_id=t.id AND e.type='company.ceo_cycle_started') ORDER BY t.created_at DESC LIMIT 1", [ceo.id]);
+      const tasks = await tx.query<Row>("SELECT t.* FROM tasks t WHERE t.employee_id=$1 AND t.mission_id=current_mission_id() AND EXISTS(SELECT 1 FROM events e WHERE e.entity_id=t.id AND e.type='company.ceo_cycle_started') ORDER BY t.created_at DESC LIMIT 1", [ceo.id]);
       const latest = tasks.rows[0];
       if (latest) {
         if (!['COMPLETED','CANCELLED','FAILED','EXPIRED'].includes(latest.status)) return;
@@ -200,7 +203,7 @@ export class Organization {
       const previousCycle = latest && ['FAILED','EXPIRED'].includes(latest.status)
         ? `\nThe previous CEO cycle ${latest.id} ended ${latest.status}: ${latest.error || 'It did not complete.'} Treat this as recovery work: inspect existing records, preserve useful progress, narrow or change the approach, and do not repeat an unsupported action. No failed-cycle operations should be assumed applied. Previous work summary: ${String(latest.artifact?.summary || 'None recorded.').slice(0,2000)}.` : '';
       const id = randomUUID(); this.service.model(c.ceo_model_id);
-      const current = (await tx.query<Row>("SELECT headline,statement,created_at FROM directions WHERE superseded_at IS NULL")).rows[0];
+      const current = (await tx.query<Row>("SELECT headline,statement,created_at FROM directions WHERE superseded_at IS NULL AND mission_id=$1",[mission.id])).rows[0];
       let direction = `
 No operating direction is recorded. Choose one and set it with SET_DIRECTION (target=company) in this cycle.`;
       if (current) {
@@ -215,7 +218,7 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
         ].join(" ");
       }
       await tx.query(`INSERT INTO tasks(id,root_id,objective,role,depth,status,budget,token_budget,expires_at,model_id,review_model_id,employee_id)
-        VALUES($1,$1,$2,'CEO',0,'PLAN_PENDING',$3,$4,$5,$6,$7,$8)`, [id, `${c.mandate}${direction}${previousCycle}\nReview company context. Decide the next useful operating steps, ${ceoDelegationGuidance} Use structured operations. Do not claim external work has occurred.`, c.cycle_budget, c.cycle_tokens, new Date(this.service.now().getTime() + 24 * 3600000), c.ceo_model_id, null, ceo.id]);
+        VALUES($1,$1,$2,'CEO',0,'PLAN_PENDING',$3,$4,$5,$6,$7,$8)`, [id, `${mission.objective}\nBoundaries: ${mission.boundaries}\nDefinition of done: ${JSON.stringify(mission.definition_of_done)}\nDeliverable: ${mission.deliverable}${direction}${previousCycle}\nReview company context. Decide the next useful operating steps, ${ceoDelegationGuidance} Use structured operations. Do not claim external work has occurred.`, c.cycle_budget, c.cycle_tokens, new Date(this.service.now().getTime() + 24 * 3600000), c.ceo_model_id, null, ceo.id]);
       await event(tx, "company.ceo_cycle_started", id, { employeeId: ceo.id, previousCycleId:latest?.id ?? null, recovering:!!previousCycle });
     });
   }
@@ -452,6 +455,8 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
             for (const p of operation.participants) await this.validRecipient(tx, p);
             if (new Date(operation.scheduledAt) >= new Date(source.expires_at)) throw new DomainError("Meeting must begin before its source allocation expires.");
             await tx.query("INSERT INTO meetings(id,title,objective,organizer_id,participants,scheduled_at,budget,source_task_id,token_budget) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", [id, operation.title, operation.instructions, sender, JSON.stringify(operation.participants), operation.scheduledAt, parseUsd(operation.budgetUsd).toString(), source.id, operation.tokenBudget]);
+          } else if (operation.type === 'PROPOSE_DEPARTMENT') {
+            await proposeDepartment(tx,source,operation);
           } else if (operation.type === 'SET_DIRECTION') {
             if (!source.employee_id) throw new DomainError('Only an employed agent can set company direction.');
             const actor = await one(tx, "SELECT * FROM employees WHERE id=$1 AND status='ACTIVE'", [source.employee_id]);
@@ -533,7 +538,9 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
   /** Records a new operating direction and retires the previous one. One direction is current at a time. */
   async setDirection(tx: Tx, input: { headline: string; statement: string; setBy: string; setByRole: string; taskId?: string }) {
     const id = randomUUID();
-    await tx.query("UPDATE directions SET superseded_at=now() WHERE superseded_at IS NULL");
+    const mission=input.taskId?(await one(tx,'SELECT mission_id AS id FROM tasks WHERE id=$1',[input.taskId])):await currentMission(tx);
+    if(!mission?.id)throw new DomainError('An active mission is required to set a direction.');
+    await tx.query("UPDATE directions SET superseded_at=now() WHERE superseded_at IS NULL AND mission_id=$1",[mission.id]);
     await tx.query("INSERT INTO directions(id,headline,statement,set_by,set_by_role,task_id) VALUES($1,$2,$3,$4,$5,$6)",
       [id, input.headline, input.statement, input.setBy, input.setByRole, input.taskId ?? null]);
     await tx.query("UPDATE company SET revision=revision+1 WHERE id=1");
@@ -546,9 +553,9 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
   }
   async clearDirection() {
     await this.service.db.transaction(async (tx) => {
-      const current = await tx.query<Row>("SELECT id FROM directions WHERE superseded_at IS NULL");
+      const current = await tx.query<Row>("SELECT id FROM directions WHERE superseded_at IS NULL AND mission_id=current_mission_id()");
       if (!current.rows.length) return;
-      await tx.query("UPDATE directions SET superseded_at=now() WHERE superseded_at IS NULL");
+      await tx.query("UPDATE directions SET superseded_at=now() WHERE superseded_at IS NULL AND mission_id=current_mission_id()");
       await tx.query("UPDATE company SET revision=revision+1 WHERE id=1");
       await event(tx, "company.direction_cleared", current.rows[0].id, {}, "owner");
     });

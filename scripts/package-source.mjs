@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 
 const root=resolve(import.meta.dirname,'..');
-const topFiles=new Set(['README.md','LICENSE','SECURITY.md','CONTRIBUTING.md','CODE_OF_CONDUCT.md','CHANGELOG.md','package.json','pnpm-lock.yaml','pnpm-workspace.yaml','tsconfig.base.json','vitest.config.ts','.env.example','.gitignore','Payment_Info_Venmo_Crypto.example.txt']);
+const topFiles=new Set(['README.md','AGENTS.md','BACKLOG.md','LICENSE','SECURITY.md','CONTRIBUTING.md','CODE_OF_CONDUCT.md','CHANGELOG.md','package.json','pnpm-lock.yaml','pnpm-workspace.yaml','tsconfig.base.json','vitest.config.ts','.env.example','.gitignore','Payment_Info_Venmo_Crypto.example.txt']);
 const directories=new Set(['apps','packages','tests','scripts','docs','config','.github']);
 const excluded=new Set(['node_modules','dist','data','backups','artifacts','.git','coverage','test-results','playwright-report','recordings']);
 const privateNames=new Set(['RESUME.md','TODO.txt','GOAL.md','OWNER_MANDATE.md','Payment_Info_Venmo_Crypto.txt','server.lock','owner-token.txt','email-token.key']);

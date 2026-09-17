@@ -1,4 +1,5 @@
 import { PGlite, type Transaction } from "@electric-sql/pglite";
+import {migration17} from './mission-schema.js';
 import { migration1, migration2, migration3, migration4, migration5, migration6, migration7, migration8, migration9, migration10, migration11, migration12, migration13, migration14, migration15, migration16 } from "./schema.js";
 
 export type Tx = Transaction;
@@ -68,6 +69,9 @@ export async function openDatabase(dataDir?: string) {
   });
   await db.transaction(async tx => {
     if (!(await tx.query("SELECT version FROM hive_migrations WHERE version=16")).rows.length) { await tx.exec(migration16); await tx.query("INSERT INTO hive_migrations(version) VALUES(16)"); }
+  });
+  await db.transaction(async tx=>{
+    if(!(await tx.query('SELECT version FROM hive_migrations WHERE version=17')).rows.length){await tx.exec(migration17);await tx.query('INSERT INTO hive_migrations(version) VALUES(17)');}
   });
   return db;
 }

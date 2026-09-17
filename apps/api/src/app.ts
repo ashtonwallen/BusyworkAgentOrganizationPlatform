@@ -1,4 +1,5 @@
 import {proposeOrderEmail} from '@hive/runtime';
+import {createMission,activateMission,approveDepartment} from '@hive/runtime';
 import {saveOrder,readOrder} from '@hive/runtime';
 import {cancelBacklogStart} from '@hive/runtime';
 import {consultations} from '@hive/runtime';
@@ -179,6 +180,9 @@ export function buildApp(options: AppOptions = {}) {
     });
     api.post("/company/status", async (request) => { const x = z.object({ status: z.enum(["RUNNING", "PAUSED", "KILLED"]) }).strict().parse(request.body); await svc().setStatus(x.status); return { ok: true }; });
     api.put("/company/budgets", async (request) => { const x = z.object({ dailyCapUsd: usd, liveCapUsd: usd, capitalAllocationUsd: usd }).strict().parse(request.body); await svc().configure(x); return { ok: true }; });
+    api.post('/missions',async request=>createMission(svc(),request.body));
+    api.post('/missions/:id/activate',async request=>{const {id}=z.object({id:shortText}).parse(request.params);await activateMission(svc(),id);return {ok:true};});
+    api.post('/departments/proposals/:id/approve',async request=>{const {id}=z.object({id:shortText}).parse(request.params);await approveDepartment(svc(),id);return {ok:true};});
     api.put("/company/approval-policy", async (request) => { const x = z.object({ expenses: z.boolean().optional(), modelCalls: z.boolean().optional(), communications: z.boolean().optional(), publishing: z.boolean().optional(), accounts: z.boolean().optional(), research: z.boolean().optional(), otherExternal: z.boolean().optional(), smsEnabled: z.boolean().optional() }).strict().parse(request.body); await svc().setApprovalPolicy(x); return { ok: true }; });
     api.put("/company/mandate", async (request) => { const x = z.object({ mandate: text, maxDepth: z.number().int().min(0).max(64), maxAgents: z.number().int().min(1).max(1000), maxConcurrency: z.number().int().min(1).max(32), ceoModelId: shortText, reviewModelId: shortText.optional(), cycleBudgetUsd: usd, cycleTokens: z.number().int().min(1000).max(1000000), cycleIntervalMinutes: z.number().int().min(1).max(10080) }).strict().parse(request.body); await new Organization(svc()).configure(x); return { ok: true }; });
     api.put("/company/direction", async (request) => { const x = z.object({ headline: shortText, statement: text }).strict().parse(request.body); await new Organization(svc()).ownerSetDirection(x); return { ok: true }; });

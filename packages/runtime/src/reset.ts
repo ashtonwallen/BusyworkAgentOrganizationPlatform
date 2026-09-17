@@ -54,6 +54,7 @@ export async function resetBusiness(service:HiveService,revision:number,workspac
    if(version===1)await tx.query('INSERT INTO company(id,daily_cap) VALUES(1,10000000)');
    await tx.query('INSERT INTO hive_migrations(version) VALUES($1)',[version]);
   }
+  await tx.exec(migration17);await tx.query('INSERT INTO hive_migrations(version) VALUES(17)');
   const preserved=['daily_cap','live_cap','capital_allocation','max_depth','max_agents','max_concurrency','approval_policy','ceo_model_id','ceo_review_model_id','cycle_budget','cycle_tokens','cycle_interval_minutes'];
   await tx.query(`UPDATE company SET ${preserved.map((key,i)=>`${key}=$${i+1}`).join(',')},revision=$${preserved.length+1},status='PAUSED' WHERE id=1`,
    [...preserved.map(key=>key==='approval_policy'?JSON.stringify({...company[key],smsEnabled:false}):company[key]),Number(company.revision)+1]);
@@ -72,3 +73,4 @@ export async function resetBusiness(service:HiveService,revision:number,workspac
  service.workspaces=new Workspaces(workspaceRoot);
  return result;
 }
+import {migration17} from './mission-schema.js';

@@ -1,8 +1,8 @@
 # Busywork
 
-Self-hosted agent workflows with approvals, spending controls, and an audit trail. Bring your own API keys or local model workers.
+Self-hosted agent teams pursuing missions with approvals, spending controls, and an audit trail. Bring your own API keys or local model workers.
 
-Busywork runs a persistent organization of agents: a CEO plans work, hires and delegates, and coordinates through messages, shared documents, customer orders, and follow-ups. You control the business mandate, spending limits, and which actions need approval.
+Busywork runs a persistent organization of agents: a CEO plans work, hires and delegates, and coordinates through messages, shared documents, and follow-ups. You define the mission's objective, boundaries and acceptance conditions; the team chooses its strategy. Templates cover research, outreach, comparisons, content, business operation and custom work. Commerce-enabled missions retain customer orders and revenue tracking.
 
 The engineering focus is accountable execution:
 
