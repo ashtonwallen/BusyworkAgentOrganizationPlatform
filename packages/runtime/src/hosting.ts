@@ -1,3 +1,4 @@
+import {assertMissionExternal} from './mission-capabilities.js';
 import {z} from 'zod';
 import {parseUsd} from '@hive/core';
 import {one,event,type Tx} from './db.js';
@@ -23,6 +24,7 @@ export async function admitPublishing(tx:Tx,actionId:string,config:HostingSetup,
  await one(tx,'SELECT id FROM company WHERE id=1 FOR UPDATE');
  const company=await one(tx,'SELECT * FROM company WHERE id=1');
  const action=await one(tx,'SELECT * FROM actions WHERE id=$1 FOR UPDATE',[actionId]);
+ await assertMissionExternal(tx,action.mission_id,'PUBLISH');
  const blocked=await missionAdmission(tx,action.mission_id,BigInt(action.max_cost));if(blocked)throw new DomainError(blocked);
  if(company.status!=='RUNNING'||action.status!=='APPROVED'||new Date(action.expires_at)<=now)throw new DomainError('Publishing needs a running company and an unexpired approval.');
  if(action.action_type!=='PUBLISH'||action.payload.executionMode!=='NETLIFY_AUTOMATIC'||action.target!==config.siteId)throw new DomainError('Publishing action does not match the configured integration.');

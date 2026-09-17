@@ -1,3 +1,4 @@
+import {assertMissionExternal} from './mission-capabilities.js';
 import {staleOrderEmailsSql} from './order-email-status.js';
 import {missionAdmission} from './mission-lifecycle.js';
 import type {Workspaces} from './workspaces.js';
@@ -29,6 +30,7 @@ export async function proposeBusinessEmail(tx:Tx,raw:unknown,actor:string,taskId
  if(!businessMailbox)throw new DomainError('Configure HIVE_BUSINESS_EMAIL and connect its mailbox before proposing email.');
  await one(tx,'SELECT id FROM company WHERE id=1 FOR UPDATE');
  if(!await emailPermission(tx,actor,'can_send'))throw new DomainError('This employee does not have business-email send permission.');
+ await assertMissionExternal(tx,taskId?(await one(tx,'SELECT mission_id FROM tasks WHERE id=$1',[taskId])).mission_id:null,'SEND_MESSAGE');
  const draft=emailDraftSchema.parse(raw);
  const existing=(await tx.query<Row>('SELECT * FROM email_messages WHERE id=$1',[requestId])).rows[0];
  if(existing){if(existing.author_id!==actor||canonical(emailDraftSchema.parse(existing.draft))!==canonical(draft)||existing.action_id!==requestId)throw new DomainError('Email request ID belongs to a different message.');return existing;}
@@ -101,6 +103,7 @@ export class BusinessEmail {
     const slots=await one(tx,"SELECT ((SELECT COUNT(*) FROM calls WHERE status IN ('RESERVED','DISPATCHED'))+(SELECT COUNT(*) FROM actions WHERE status='EXECUTING'))::int AS count");if(slots.count>=company.max_concurrency)return;
     const candidates=await sendCandidates(tx,this.service.now(),100);
     for(const message of candidates){
+     try{await assertMissionExternal(tx,message.mission_id,'SEND_MESSAGE');}catch{continue;}
      if(await missionAdmission(tx,message.mission_id))continue;
      if(message.action_payload?.integration!=='business-email'||message.action_payload.version!==1||message.action_payload.mimeSha256!==createHash('sha256').update(message.raw_mime).digest('hex'))throw new DomainError('Email MIME no longer matches the approved proposal.');
      if(new Date(message.expires_at)<=this.service.now()||!await emailPermission(tx,message.author_id,'can_send'))continue;

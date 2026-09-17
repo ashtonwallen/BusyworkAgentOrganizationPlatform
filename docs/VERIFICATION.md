@@ -48,3 +48,22 @@ Migration 19 adds immutable source records and versioned claim/citation associat
 Limitation: this checks provenance for structured claims, not semantic truth or complete coverage of arbitrary prose. Documents without structured claims visibly say coverage is unassessed. Hashes cover retained text, and truncation remains explicit. Agents are instructed to include source IDs in report text so plain-text exports retain references.
 
 Validation: 17 focused tests passed (sources, documents, search and reset), plus persistence after migration 19. Build/typecheck and dashboard smoke, including a document detail view, passed. No network retrieval occurred in tests.
+
+## Step 6: capability-scoped prompts and execution
+
+One operation-family registry controls schemas, guides, local reads and dispatch checks. Disabled operations name their required family; changed mission capabilities also block already-approved dispatch. LIST_CAPABILITIES distinguishes mission-disabled tools from missing provider configuration. Cross-family attachments and commercial associations retain their additional requirements.
+
+Prompt measurements below use identical synthetic empty missions and mock calls: ceil(UTF-8 serialized request bytes / 3) + 512, not a provider tokenizer. Context and schema are included.
+
+| Template | PLAN before / after | WORK before / after |
+|---|---:|---:|
+| research | 6,387 / 5,147 | 19,214 / 11,995 |
+| outreach | 6,397 / 5,263 | 19,224 / 14,951 |
+| market-scan | 6,392 / 5,152 | 19,219 / 12,000 |
+| content | 6,386 / 5,146 | 19,213 / 11,994 |
+| business | 6,537 / 5,873 | 19,364 / 18,689 |
+| custom | 6,335 / 5,001 | 19,162 / 11,130 |
+
+Reproduce current measurements with `node scripts/measure-mission-prompts.mjs` after building. Family filtering substantially reduces noncommercial work prompts but does not guarantee an 8K model can fit a work call; actual context/output capacity is still checked before dispatch. Further on-demand operation documentation is deferred rather than silently truncating safeguards.
+
+Validation: 15 focused tests passed (mission capabilities, plan capabilities, gateway); build/typecheck passed. Full consistency suite runs after remaining steps. No paid inference or external transport.

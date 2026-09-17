@@ -1,3 +1,4 @@
+import {assertMissionExternal} from './mission-capabilities.js';
 import {recoverDeploymentCreations} from './deployments.js';
 import {recordSource} from './source-records.js';
 import { lookup } from "node:dns/promises";
@@ -72,6 +73,7 @@ export class ToolGateway {
       const c=await one(tx,"SELECT * FROM company WHERE id=1 FOR UPDATE");
       const a=await one(tx,"SELECT * FROM actions WHERE id=$1 FOR UPDATE",[id]);
       if(a.status==='EXECUTED')return{done:true,result:a.result} as const;
+      await assertMissionExternal(tx,a.mission_id,a.action_type);
       if(c.status!=='RUNNING')throw new DomainError('Company is not running.');
       const slots=await one(tx,"SELECT ((SELECT COUNT(*) FROM calls WHERE status IN ('RESERVED','DISPATCHED'))+(SELECT COUNT(*) FROM actions WHERE status='EXECUTING' AND action_type<>'MODEL_CALL'))::integer AS count");
       if(slots.count>=c.max_concurrency)throw new DomainError('All configured execution slots are in use.');

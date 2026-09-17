@@ -1,3 +1,4 @@
+import {assertMissionRead} from './mission-capabilities.js';
 import {findBusinessEntities} from './business-entities.js';
 import {staffDirectory} from './staff-directory.js';
 import {readBacklog} from './backlog.js';
@@ -15,6 +16,7 @@ import type {HiveService} from './service.js';
 /** Local retrieval only. No mutation tool, network request or new authority is admitted here. */
 export async function internalRead(tx:Tx,service:HiveService,actor:string,raw:unknown){
  const request=internalReadInput.parse(raw);
+ await assertMissionRead(tx,request.type);
  if(!(await tx.query("SELECT id FROM employees WHERE id=$1 AND status='ACTIVE'",[actor])).rows.length)throw new Error('Internal reads require an active employee.');
  if(request.type==='ENTITY_FIND')return findBusinessEntities(tx,actor,request.target,request.offset);
  if(request.type==='STAFF_FIND')return staffDirectory(tx,actor,request.target,request.before);

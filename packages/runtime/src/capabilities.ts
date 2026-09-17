@@ -1,3 +1,5 @@
+import {currentMission} from './missions.js';
+import {enabledOperations,readFamilies} from './operation-families.js';
 ﻿import {one,type Tx,type Row} from './db.js';
 import type {HiveService} from './service.js';
 import {emailPermission} from './email.js';
@@ -7,7 +9,9 @@ export async function capabilityReport(tx:Pick<Tx,'query'>,service:HiveService,e
  await one(tx,"SELECT id FROM employees WHERE id=$1 AND status='ACTIVE'",[employeeId]);
  const company=await one(tx,'SELECT status,approval_policy,max_depth,max_agents FROM company WHERE id=1');
  const mailbox=(await tx.query<Row>('SELECT enabled,credential_ciphertext IS NOT NULL AS connected FROM email_mailboxes LIMIT 1')).rows[0];
- return {
+ const mission=await currentMission(tx),enabled=mission?.capabilities??[],names=new Set(enabledOperations(enabled));
+ const report={
+  missionCapabilities:enabled,
   runtimeStatus:company.status,approvalRequirements:company.approval_policy,
   modelConfigurations:{operations:['REGISTER_MODEL','CONFIGURE_MODEL','SET_MODEL'],connections:service.models.filter(m=>m.provider!=='mock'&&!m.connectionId).map(m=>({id:m.id,name:m.name,provider:m.provider})),models:service.models.filter(m=>m.provider!=='mock').map(m=>({id:m.id,name:m.name,model:m.model,connectionId:m.connectionId??m.id,ready:m.ready,live:m.live})),note:'Registration reuses an established connection and keeps credentials server-side. Pricing, approvals and spending caps apply; registration is not a provider test.'},
   internal:{
@@ -30,4 +34,6 @@ export async function capabilityReport(tx:Pick<Tx,'query'>,service:HiveService,e
   unavailable:['General desktop/app control','Unrestricted host shell or code execution','Autonomous changes to platform source code'],
   note:'Configuration is not proof of provider reachability, current funds, commercial scope or authorization. No network checks were performed. Continue independent internal work while configuration or approvals are pending.',
  };
+ for(const group of [report.internal,report.external])for(const item of Object.values(group) as any[]){item.operations=item.operations.filter((name:string)=>names.has(name));if(item.inTaskReads)item.inTaskReads=item.inTaskReads.filter((name:string)=>enabled.includes(readFamilies[name]));item.missionEnabled=item.operations.length>0;if(!item.missionEnabled){item.available=false;item.note='Disabled by the active mission capabilities.';}}
+ return report;
 }

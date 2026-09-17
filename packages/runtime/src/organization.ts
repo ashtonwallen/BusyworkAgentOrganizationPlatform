@@ -1,3 +1,4 @@
+import {assertMissionOperation} from './mission-capabilities.js';
 import {cancelAssignedWork} from './task-cancellation.js';
 import {currentMission,proposeDepartment} from './missions.js';
 import {readSource} from './source-records.js';
@@ -274,6 +275,7 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
           const source = await one(tx, "SELECT * FROM tasks WHERE id=$1 FOR UPDATE", [taskId]);
           if(source.status!=='COMPLETED'||source.operations_applied)return;
           if(source.mission_id){const m=await one(tx,'SELECT status,pause_reason FROM missions WHERE id=$1',[source.mission_id]);if(m.status!=='ACTIVE'||m.pause_reason)throw new DomainError('Mission is paused or no longer active.');}
+          await assertMissionOperation(tx,source.mission_id,operation);
           // Observe execution history only after serializing with other runners.
           const prior = await tx.query("SELECT id FROM operations WHERE id=$1", [operationId]); if (prior.rows.length) return;
           const sender = source.employee_id ?? "company";

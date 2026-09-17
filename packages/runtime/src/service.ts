@@ -1,3 +1,4 @@
+import {assertMissionExternal} from './mission-capabilities.js';
 import {instanceSettings} from './instance-settings.js';
 import {currentMission,missionTemplates} from './missions.js';
 import type {ExternalTool} from './tools.js';
@@ -575,6 +576,7 @@ export class HiveService {
     const x = actionInput.parse(raw), id = randomUUID();
     if (new Date(x.expiresAt) <= this.now()) throw new DomainError("Action expiry must be in the future.");
     await this.db.transaction(async (tx) => {
+      await assertMissionExternal(tx,x.taskId?(await one(tx,'SELECT mission_id FROM tasks WHERE id=$1',[x.taskId])).mission_id:null,x.actionType);
       if(x.payload.releaseId!==undefined){
         if(x.actionType!=='PUBLISH')throw new DomainError('A prepared release can only be attached to a publishing proposal.');
         const publication=await this.publishingBinding(tx,String(x.payload.releaseId),x.target,x.payload.executionMode,x.maxCostUsd);

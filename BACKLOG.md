@@ -19,3 +19,6 @@ Maintain one execution engine. Running a business is a mission template with com
 - Step 8: mission setup, overview, history and neutral dashboard language.
 
 After snapshot or dashboard changes, coordinate a separate re-sync of downstream demonstration sites. Never test real communications or paid providers as part of development verification.
+
+- [x] Mission capability families filter agent schemas, prompts, internal reads and dispatch; measured all six templates.
+- [ ] On-demand operation documentation for very small local contexts; current family filtering does not guarantee 8K WORK fits.
