@@ -1,14 +1,14 @@
 /** Palette and brightness are independent, browser-local preferences. */
 export const THEMES = [
-  { id: 'classic', label: 'Classic' },
   { id: 'slate', label: 'Slate' },
+  { id: 'classic', label: 'Neutral' },
   { id: 'paper', label: 'Paper' },
   { id: 'contrast', label: 'High contrast' },
 ];
-export function currentTheme() { return document.documentElement.dataset.theme || 'classic'; }
+export function currentTheme() { return document.documentElement.dataset.theme || 'slate'; }
 export function currentMode() { return document.documentElement.dataset.mode || 'light'; }
 export function applyTheme(id = currentTheme(), mode = currentMode()) {
-  const chosen = THEMES.some(t => t.id === id) ? id : 'classic';
+  const chosen = THEMES.some(t => t.id === id) ? id : 'slate';
   const brightness = mode === 'dark' ? 'dark' : 'light';
   const root = document.documentElement;
   root.dataset.theme = chosen;

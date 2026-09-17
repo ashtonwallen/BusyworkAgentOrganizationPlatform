@@ -5,9 +5,9 @@
   if (mode !== 'light' && mode !== 'dark') {
     mode = ['dark', 'slate', 'contrast'].includes(theme) ? 'dark'
       : ['light', 'paper'].includes(theme) ? 'light'
-      : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      : 'light';
   }
-  if (!['classic', 'slate', 'paper', 'contrast'].includes(theme)) theme = 'classic';
+  if (!['classic', 'slate', 'paper', 'contrast'].includes(theme)) theme = 'slate';
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.mode = mode;
   try { localStorage.setItem('hive-theme', theme); localStorage.setItem('hive-mode', mode); } catch (e) { /* Session-only preference. */ }

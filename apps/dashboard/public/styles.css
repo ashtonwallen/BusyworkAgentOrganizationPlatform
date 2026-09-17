@@ -3080,11 +3080,13 @@ kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 17px;
-  height: 17px;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-inline: 4px 2px;
   border: 1px solid currentColor;
   border-radius: 50%;
-  font: 11px/1 sans-serif;
+  font: 10px/1 sans-serif;
   color: var(--text-3);
   vertical-align: middle;
   cursor: help;
