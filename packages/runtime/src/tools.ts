@@ -77,6 +77,8 @@ export class ToolGateway {
       if(!['PENDING','APPROVED'].includes(a.status)||new Date(a.expires_at)<=this.service.now())throw new DomainError('Action is not currently executable.');
       if(tool.version!==1)throw new DomainError('Tool version changed; submit a new version-bound proposal.');
       const maximum=parseUsd(tool.maximumCostUsd);if(BigInt(a.max_cost)<maximum)throw new DomainError('Proposal does not cover the tool cost bound.');
+      const missionBlocked=await missionAdmission(tx,a.mission_id,BigInt(a.max_cost));
+      if(missionBlocked)return {blocked:missionBlocked} as const;
       // Paid adapters must implement their own typed commercial contract before registration is enabled.
       if(maximum!==0n||BigInt(a.max_cost)!==0n)throw new DomainError('Only zero-cost research adapters are enabled in the initial tool gateway.');
       if(a.task_id){const task=await one(tx,"SELECT * FROM tasks WHERE id=$1",[a.task_id]);if(['CANCELLED','EXPIRED'].includes(task.status)||new Date(task.expires_at)<=this.service.now())throw new DomainError('Source task has expired or been cancelled.');}
@@ -92,6 +94,7 @@ export class ToolGateway {
       await tx.query("UPDATE actions SET status='EXECUTING',reservation=max_cost,grant_id=$2 WHERE id=$1",[id,grantId]);await event(tx,'tool.dispatched',id,{tool:tool.name,version:tool.version});
       return{done:false,action:a,tool} as const;
     });
+    if('blocked' in admission)throw new DomainError(admission.blocked??'Mission is blocked.');
     if(admission.done)return admission.result;
     let outcome:Awaited<ReturnType<ExternalTool['execute']>>;
     try{outcome=await admission.tool.execute({target:admission.action.target,payload:admission.action.payload,actionId:id});}
@@ -121,3 +124,4 @@ export class ToolGateway {
   }
   async recover(){await this.service.db.transaction(async(tx)=>{const rows=await tx.query<Row>("UPDATE actions SET status='UNCERTAIN' WHERE status='EXECUTING' AND action_type<>'MODEL_CALL' AND NOT EXISTS(SELECT 1 FROM deployments d WHERE d.action_id=actions.id) RETURNING id");for(const a of rows.rows)await event(tx,'tool.recovered_uncertain',a.id);await recoverDeploymentCreations(tx);});}
 }
+import {missionAdmission} from './mission-lifecycle.js';

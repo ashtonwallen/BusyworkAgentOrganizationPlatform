@@ -10,7 +10,7 @@ Maintain one execution engine. Running a business is a mission template with com
 
 - Step 0: clean-clone verification and isolated dashboard smoke check completed.
 - Step 1: mission storage, legacy attribution, mission directions, templates and department proposals completed.
-- Step 2: owner-confirmed completion, evidence-based stall detection and mission spending caps.
+- Step 2: owner-confirmed completion, evidence-based stall detection, mission spending caps and bounded delegation completed.
 - Step 3: mission-aware direction accountability.
 - Step 4: configurable web search through the approval gateway.
 - Step 5: source records and deliverable citations.

@@ -1,4 +1,5 @@
 import {admitPublishing} from './hosting.js';
+import {missionAdmission} from './mission-lifecycle.js';
 import {one,event} from './db.js';
 import {DomainError,HiveService} from './service.js';
 import {claimDeploymentCreation,recordDeploymentReceipt,recoverDeploymentCreations} from './deployments.js';
@@ -32,9 +33,11 @@ export class StaticPublisher {
     await one(tx,'SELECT id FROM company WHERE id=1 FOR UPDATE');
     const action=await one(tx,'SELECT * FROM actions WHERE id=$1',[actionId]);
     if(action.target!==this.siteId)throw new DomainError('Publisher destination mismatch.');
+    if(action.status==='APPROVED'){const blocked=await missionAdmission(tx,action.mission_id,BigInt(action.max_cost));if(blocked)return {blocked} as const;}
     if(action.status==='APPROVED')await admitPublishing(tx,actionId,this.service.hosting,this.service.now());
     return claimDeploymentCreation(tx,actionId,this.service.now());
    });
+   if('blocked' in claim)throw new DomainError(claim.blocked);
    const deployment=claim.deployment;
    const release=await one(this.service.db,'SELECT manifest FROM static_releases WHERE id=$1',[deployment.release_id]);
    if(claim.claimed){

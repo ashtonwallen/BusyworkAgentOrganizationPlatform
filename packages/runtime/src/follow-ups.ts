@@ -34,6 +34,7 @@ export async function runFollowUps(service:HiveService){
   for(const followup of (await pendingFollowUps(tx)).slice(0,100)){
    const p=followup.payload;
    const source=(await tx.query<Row>('SELECT * FROM tasks WHERE id=$1',[p.sourceTaskId])).rows[0];
+   if(source&&!(await tx.query("SELECT id FROM missions WHERE id=$1 AND status='ACTIVE' AND pause_reason IS NULL",[source.mission_id])).rows.length)continue;
    const employee=(await tx.query<Row>("SELECT * FROM employees WHERE id=$1 AND status='ACTIVE'",[p.employeeId])).rows[0];
    if(!source||!employee||source.status==='CANCELLED'||new Date(source.expires_at)<=service.now()||source.depth+1>company.max_depth){
     const reason='Source deadline, delegation limit or employee availability no longer permits this follow-up.';

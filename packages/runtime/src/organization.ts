@@ -1,5 +1,6 @@
 import {cancelAssignedWork} from './task-cancellation.js';
 import {currentMission,proposeDepartment} from './missions.js';
+import {missionAdmission,checkMissionStall,requestMissionCompletion} from './mission-lifecycle.js';
 import {readBacklog} from './backlog.js';
 import {withdrawOwnEmail} from './email-withdraw.js';
 import {proposeOrderEmail} from './order-email.js';
@@ -179,11 +180,13 @@ export class Organization {
       if (c.status !== "RUNNING") return;
       const mission=await currentMission(tx);
       if(!mission||mission.status!=='ACTIVE'||mission.pause_reason)return;
+      if(await missionAdmission(tx,mission.id))return;
       const ceo = await this.ensureCEO(tx);
       const active = await tx.query("SELECT id FROM tasks WHERE employee_id=$1 AND mission_id=$2 AND status NOT IN ('COMPLETED','CANCELLED','FAILED','EXPIRED') LIMIT 1", [ceo.id,mission.id]);
       if (active.rows.length) return;
       const tasks = await tx.query<Row>("SELECT t.* FROM tasks t WHERE t.employee_id=$1 AND t.mission_id=current_mission_id() AND EXISTS(SELECT 1 FROM events e WHERE e.entity_id=t.id AND e.type='company.ceo_cycle_started') ORDER BY t.created_at DESC LIMIT 1", [ceo.id]);
       const latest = tasks.rows[0];
+      if(await checkMissionStall(tx,mission,latest))return;
       if (latest) {
         if (!['COMPLETED','CANCELLED','FAILED','EXPIRED'].includes(latest.status)) return;
         let waiting = latest.status==='COMPLETED' && latest.artifact?.operations?.some((operation:any)=>operation.type==='WAIT');
@@ -269,6 +272,7 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
           if (c.status !== "RUNNING") return;
           const source = await one(tx, "SELECT * FROM tasks WHERE id=$1 FOR UPDATE", [taskId]);
           if(source.status!=='COMPLETED'||source.operations_applied)return;
+          if(source.mission_id){const m=await one(tx,'SELECT status,pause_reason FROM missions WHERE id=$1',[source.mission_id]);if(m.status!=='ACTIVE'||m.pause_reason)throw new DomainError('Mission is paused or no longer active.');}
           // Observe execution history only after serializing with other runners.
           const prior = await tx.query("SELECT id FROM operations WHERE id=$1", [operationId]); if (prior.rows.length) return;
           const sender = source.employee_id ?? "company";
@@ -455,6 +459,8 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
             for (const p of operation.participants) await this.validRecipient(tx, p);
             if (new Date(operation.scheduledAt) >= new Date(source.expires_at)) throw new DomainError("Meeting must begin before its source allocation expires.");
             await tx.query("INSERT INTO meetings(id,title,objective,organizer_id,participants,scheduled_at,budget,source_task_id,token_budget) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", [id, operation.title, operation.instructions, sender, JSON.stringify(operation.participants), operation.scheduledAt, parseUsd(operation.budgetUsd).toString(), source.id, operation.tokenBudget]);
+          } else if (operation.type === 'COMPLETE_MISSION') {
+            await requestMissionCompletion(tx,source,operation.missionCompletion);
           } else if (operation.type === 'PROPOSE_DEPARTMENT') {
             await proposeDepartment(tx,source,operation);
           } else if (operation.type === 'SET_DIRECTION') {
@@ -569,7 +575,7 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
   async runMeetings() {
     await this.service.db.transaction(async (tx) => {
       const company = await one(tx, "SELECT * FROM company WHERE id=1 FOR UPDATE"); if (company.status !== 'RUNNING') return;
-      const due = await tx.query<Row>("SELECT * FROM meetings WHERE status='SCHEDULED' AND scheduled_at<=$1 ORDER BY scheduled_at LIMIT 5 FOR UPDATE", [this.service.now()]);
+      const due = await tx.query<Row>("SELECT * FROM meetings WHERE status='SCHEDULED' AND scheduled_at<=$1 AND EXISTS(SELECT 1 FROM missions m WHERE m.id=meetings.mission_id AND m.status='ACTIVE' AND m.pause_reason IS NULL) ORDER BY scheduled_at LIMIT 5 FOR UPDATE", [this.service.now()]);
       for (const meeting of due.rows) {
         const selected = await tx.query<Row>("SELECT * FROM employees WHERE status='ACTIVE' AND (id=ANY($1::text[]) OR department_id=ANY($1::text[]) OR 'company'=ANY($1::text[])) ORDER BY depth,id", [meeting.participants]);
         if (!selected.rows.length) { await tx.query("UPDATE meetings SET status='CANCELLED',decisions=$2 WHERE id=$1", [meeting.id, JSON.stringify({ reason: "No active participants. Hire the necessary roles before meeting." })]); await event(tx, "meeting.cancelled", meeting.id, { reason: "No active participants" }); continue; }

@@ -65,6 +65,7 @@ export async function runBacklogSchedules(service:HiveService){
  await service.db.transaction(async tx=>{
  const company=await one(tx,'SELECT * FROM company WHERE id=1 FOR UPDATE');if(company.status!=='RUNNING')return;
  for(const schedule of await pendingBacklogStarts(tx)){
+ if(!(await tx.query("SELECT id FROM missions WHERE id=(SELECT mission_id FROM events WHERE entity_id=$1 AND type='backlog.scheduled' ORDER BY sequence DESC LIMIT 1) AND status='ACTIVE' AND pause_reason IS NULL",[schedule.id])).rows.length)continue;
  const decision=await readiness(tx,service,schedule,company,await backlogItems(tx));
  if(decision.state==='CANCELLED'){await cancelWithNotice(tx,schedule,decision.reason);continue;}
  if(decision.state==='ASSIGNED'){await event(tx,'backlog.schedule_started',schedule.id,{taskId:decision.taskId,alreadyAssigned:true},schedule.payload.requestedBy);continue;}

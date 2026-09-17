@@ -1,4 +1,5 @@
 import {staleOrderEmailsSql} from './order-email-status.js';
+import {missionAdmission} from './mission-lifecycle.js';
 import type {Workspaces} from './workspaces.js';
 import {simpleParser} from 'mailparser';
 import {documentPdf} from './document-export.js';
@@ -100,6 +101,7 @@ export class BusinessEmail {
     const slots=await one(tx,"SELECT ((SELECT COUNT(*) FROM calls WHERE status IN ('RESERVED','DISPATCHED'))+(SELECT COUNT(*) FROM actions WHERE status='EXECUTING'))::int AS count");if(slots.count>=company.max_concurrency)return;
     const candidates=await sendCandidates(tx,this.service.now(),100);
     for(const message of candidates){
+     if(await missionAdmission(tx,message.mission_id))continue;
      if(message.action_payload?.integration!=='business-email'||message.action_payload.version!==1||message.action_payload.mimeSha256!==createHash('sha256').update(message.raw_mime).digest('hex'))throw new DomainError('Email MIME no longer matches the approved proposal.');
      if(new Date(message.expires_at)<=this.service.now()||!await emailPermission(tx,message.author_id,'can_send'))continue;
      if(message.task_id){const task=await one(tx,'SELECT status,expires_at FROM tasks WHERE id=$1',[message.task_id]);if(['CANCELLED','EXPIRED'].includes(task.status)||new Date(task.expires_at)<=this.service.now())continue;}

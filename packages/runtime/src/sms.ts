@@ -27,6 +27,7 @@ export class SmsService {
       const rows=await tx.query<Row>("SELECT n.*,a.target,a.action_type,a.max_cost,a.rationale FROM notifications n JOIN actions a ON a.id=n.action_id WHERE n.status='PENDING' AND a.status='PENDING' AND a.expires_at>$1 ORDER BY n.created_at LIMIT 1 FOR UPDATE",[this.service.now()]);
       if(!rows.rows.length)return null;
       const row=rows.rows[0],bound=parseUsd(this.config.maxCostUsd),day=this.service.now().toISOString().slice(0,10);
+      if(await missionAdmission(tx,row.mission_id,bound))return null;
       const sms=await one(tx,"SELECT COALESCE(SUM(COALESCE(settled,0)+CASE WHEN settled IS NULL THEN reserved ELSE 0 END),0)::text AS cost FROM notifications WHERE budget_day=$1 OR (settled IS NULL AND reserved>0)",[day]);
       const calls=await one(tx,`SELECT COALESCE(SUM(COALESCE(settled,0)+CASE WHEN status IN ${activeCalls} THEN reserved ELSE 0 END),0)::text AS cost FROM calls WHERE budget_day=$1 OR status IN ${activeCalls}`,[day]);
       if(BigInt(sms.cost)+bound>parseUsd(this.config.dailyCapUsd)||BigInt(sms.cost)+BigInt(calls.cost)+bound>BigInt(company.daily_cap))return null;
@@ -76,3 +77,4 @@ export class SmsService {
     });
   }
 }
+import {missionAdmission} from './mission-lifecycle.js';

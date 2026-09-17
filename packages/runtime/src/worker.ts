@@ -1,4 +1,5 @@
 import {taskMission,missionContext} from './missions.js';
+import {missionAdmission} from './mission-lifecycle.js';
 import {instanceSettings} from './instance-settings.js';
 import {orderRegister,orderPlanningContext} from './orders.js';
 import {internalRead,internalReadContext} from './internal-reads.js';
@@ -72,8 +73,9 @@ BUSINESS_EMAIL_ACCESS: target=employee UUID, emailAccess={canRead,canSend}; supe
 PREPARE_RELEASE: target=existing Netlify site UUID from owner company records, title=release title, releaseFiles=[{path:published relative file path,documentPath:shared document path,version:exact positive version}]. Requires index.html; up to50 static files/500KB. First write and review the documents. This freezes content for review, does not publish, charge or grant authority. Do not invent hosting access or site IDs; request missing setup while continuing independent work. Prepared releases appear in publishingReleases and the owner Documents page. Check hosting.ready for current automatic publishing availability.
 WORK operations:
 PROPOSE_DEPARTMENT: CEO only; title=name, instructions=purpose. Requests owner approval for a new department without hiring or changing headcount limits.
+COMPLETE_MISSION: CEO only. Write the durable deliverable first. missionCompletion={conditions:[{conditionIndex:0,evidence:[{kind:'DOCUMENT',id:'report.md',version:1}]}],deliverable:{path:'report.md',version:1}}. Cite every completion condition using exact DOCUMENT versions, completed TASK ids or EXECUTED ACTION receipts from this mission. This requests owner confirmation and stops mission work while waiting; it does not declare completion itself.
 HIRE: target=department ID, title=role, instructions=charter and first task, modelId=configured model, candidateId=best fit. Hire only useful capacity.
-ASSIGN_TASK: target=employee ID. Token and dollar allocations are estimates; neither must fit the parent estimate. Deadlines and headcount still apply.
+ASSIGN_TASK: target=employee ID. Delegation must fit the parent remaining money and tokens after existing work and allocations. Deadlines and headcount also apply.
 SET_MODEL: target=self or subordinate; affects future work. The owner selects the CEO model. Every agent checks its own work. Supervisors may inspect delegated results themselves or assign a review to an employee when useful; a dedicated reviewer is optional.
 SET_DIRECTION: CEO only, target=company, title=headline, instructions=strategy. Choose one if absent; revise based on evidence within the owner mandate.
 MESSAGE/ESCALATION: target=any employee, department, owner or company; managers cannot veto escalation.
@@ -163,6 +165,7 @@ export class Worker {
       const recentDispatches=(await tx.query<Row>(`SELECT EXISTS(SELECT 1 FROM events e WHERE e.entity_id=c.task_id AND e.type='conversation.reply_requested') AS chat FROM calls c ORDER BY c.created_at DESC,c.id DESC LIMIT 3`)).rows;
       const favorChat=recentDispatches.length<3 || recentDispatches.some(call=>!call.chat);
       const rows = await tx.query<Row>(`SELECT * FROM tasks WHERE status IN ('PLAN_PENDING','READY','REVIEW')
+        AND (EXISTS(SELECT 1 FROM missions m WHERE m.id=tasks.mission_id AND m.status='ACTIVE' AND m.pause_reason IS NULL) OR EXISTS(SELECT 1 FROM events e WHERE e.entity_id=tasks.id AND e.type='model.test_requested'))
         AND ($1 OR EXISTS(SELECT 1 FROM events WHERE entity_id=tasks.id AND type='model.test_requested'))
         ORDER BY CASE WHEN EXISTS(SELECT 1 FROM events e WHERE e.entity_id=tasks.id AND e.type='conversation.reply_requested')=$2 THEN 0 ELSE 1 END,created_at,id LIMIT 1 FOR UPDATE`, [company.status === 'RUNNING',favorChat]);
       if (!rows.rows.length) return null;
@@ -238,6 +241,7 @@ export class Worker {
         model: model.model, system: [system,mission?.capabilities.includes('commerce')?'For commercial work, advance a specific commercial decision using recorded customers, pricing, revenue evidence and stop rules.':undefined, task.phase==='PLAN'?planningGuide:operationsGuide, persona, `Your entire JSON response must fit within the requested output token allowance, including any reasoning. Be concise. Prefer a few useful operations and short deliverables over repeating the same plan across fields. Omit optional irrelevant fields or use null when required by the schema.`, peerConversation ? 'This task is an internal consultation requested by another employee. Answer their question directly in summary using relevant evidence. The checked summary is delivered automatically to the requester. Do not send a duplicate MESSAGE reply. Use tools if needed, without inventing commercial details or external authority.' : conversation ? 'This task is an owner conversation. Default to a brief conversational reply (roughly 150-250 words), unless the owner requests detail. For brainstorming, offer a few small options and a focused next question. Use empty deliverables and operations arrays unless a concrete action is necessary; do not expand a casual discussion into a full business plan. Answer the actual question directly in summary; do not require or invent a customer, offer, price, or market test. Check accuracy, relevance, evidence and authority. A useful accurate answer does not require a commercial experiment. If a new experiment needs development, assign a separate bounded task to produce its full brief.' : undefined].filter(Boolean).join('\n'), input: {
           reconciliationCase:await reconciliationCase(tx,task.id),
           mission:missionContext(mission),
+          delegationRemaining:await (async()=>{const remaining=await new Organization(service).remainingAllocation(tx,task);return {budgetUsd:formatUsd(remaining.cost),tokens:remaining.tokens};})(),
           referencedDocuments:await taskDocuments(tx,task),
           runtimeAuthority:{approvalPolicy:company.approval_policy,companyStatus:company.status,scope:'Current runtime controls; explicit owner business-scope restrictions still apply.'},
           businessEntities:(await tx.query('SELECT kind,id,label,addresses FROM email_entities ORDER BY kind,label LIMIT 20')).rows,
@@ -295,10 +299,15 @@ export class Worker {
       // fixed margin covers the chat template. Underestimating only costs a rejected
       // request, which providers do not charge for.
       const contextBlocked = estimatedInputTokens(request) > model.maxInputTokens;
-      const problem = contextBlocked ? `Model context is too small (${model.maxInputTokens.toLocaleString()} input tokens). Increase the loaded context in LM Studio, refresh model availability, then retry this objective.`
+      const missionBlocked=await missionAdmission(tx,task.mission_id,costBound);
+      const spent=task.parent_id?await service.taskExposure(tx,task.id):null;
+      const allocated=task.parent_id?await one(tx,'SELECT COALESCE(sum(budget),0)::text AS cost,COALESCE(sum(token_budget),0)::text AS tokens FROM tasks WHERE parent_id=$1',[task.id]):null;
+      const allocationBlocked=spent&&allocated&&(spent.cost+BigInt(allocated.cost)+costBound>BigInt(task.budget)||spent.tokens+Number(allocated.tokens)+tokenBound>task.token_budget)
+        ?'Delegated task allocation cannot cover this call while preserving its remaining money and tokens. Request a revised allocation or narrow the work.':null;
+      const problem = missionBlocked ?? allocationBlocked ?? (contextBlocked ? `Model context is too small (${model.maxInputTokens.toLocaleString()} input tokens). Increase the loaded context in LM Studio, refresh model availability, then retry this objective.`
           : model.spendingCapsEnabled !== false && BigInt(dayUsed.cost) + BigInt(notificationUsed.cost) + costBound > BigInt(company.daily_cap) ? "Daily operating cap cannot cover the next maximum call cost."
               : model.spendingCapsEnabled !== false && model.live && (BigInt(company.live_cap) === 0n || BigInt(liveUsed.cost) + costBound > BigInt(company.live_cap))
-                ? `Lifetime paid-model cap is $${formatUsd(company.live_cap)}. Recorded charges and holds plus this call require $${formatUsd(BigInt(liveUsed.cost) + costBound)} in total (next call maximum: $${formatUsd(costBound)}). Update the lifetime paid cap in Controls. Saving it automatically rechecks this objective; spending approval still applies.` : null;
+                ? `Lifetime paid-model cap is $${formatUsd(company.live_cap)}. Recorded charges and holds plus this call require $${formatUsd(BigInt(liveUsed.cost) + costBound)} in total (next call maximum: $${formatUsd(costBound)}). Update the lifetime paid cap in Controls. Saving it automatically rechecks this objective; spending approval still applies.` : null);
       if (problem) {
         await tx.query("UPDATE tasks SET status=$3,error=$2,updated_at=now() WHERE id=$1", [task.id, problem, contextBlocked ? "FAILED" : "BLOCKED_BUDGET"]);
         await event(tx, contextBlocked ? "task.context_blocked" : "task.blocked_budget", task.id, { reason: problem }); return { blocked: true } as const;

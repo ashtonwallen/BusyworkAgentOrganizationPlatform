@@ -1,5 +1,6 @@
 import {proposeOrderEmail} from '@hive/runtime';
 import {createMission,activateMission,approveDepartment} from '@hive/runtime';
+import {confirmMissionCompletion,stopMission,resumeMission} from '@hive/runtime';
 import {saveOrder,readOrder} from '@hive/runtime';
 import {cancelBacklogStart} from '@hive/runtime';
 import {consultations} from '@hive/runtime';
@@ -181,6 +182,9 @@ export function buildApp(options: AppOptions = {}) {
     api.post("/company/status", async (request) => { const x = z.object({ status: z.enum(["RUNNING", "PAUSED", "KILLED"]) }).strict().parse(request.body); await svc().setStatus(x.status); return { ok: true }; });
     api.put("/company/budgets", async (request) => { const x = z.object({ dailyCapUsd: usd, liveCapUsd: usd, capitalAllocationUsd: usd }).strict().parse(request.body); await svc().configure(x); return { ok: true }; });
     api.post('/missions',async request=>createMission(svc(),request.body));
+    api.post('/missions/:id/resume',async request=>{const {id}=z.object({id:shortText}).parse(request.params);await resumeMission(svc(),id,request.body);return {ok:true};});
+    api.post('/missions/:id/stop',async request=>{const {id}=z.object({id:shortText}).parse(request.params);await stopMission(svc(),id);return {ok:true};});
+    api.post('/missions/completion/:id',async request=>{const {id}=z.object({id:shortText}).parse(request.params);const {hash,accept}=z.object({hash:z.string().length(64),accept:z.boolean()}).strict().parse(request.body);await confirmMissionCompletion(svc(),id,hash,accept);return {ok:true};});
     api.post('/missions/:id/activate',async request=>{const {id}=z.object({id:shortText}).parse(request.params);await activateMission(svc(),id);return {ok:true};});
     api.post('/departments/proposals/:id/approve',async request=>{const {id}=z.object({id:shortText}).parse(request.params);await approveDepartment(svc(),id);return {ok:true};});
     api.put("/company/approval-policy", async (request) => { const x = z.object({ expenses: z.boolean().optional(), modelCalls: z.boolean().optional(), communications: z.boolean().optional(), publishing: z.boolean().optional(), accounts: z.boolean().optional(), research: z.boolean().optional(), otherExternal: z.boolean().optional(), smsEnabled: z.boolean().optional() }).strict().parse(request.body); await svc().setApprovalPolicy(x); return { ok: true }; });

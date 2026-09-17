@@ -20,3 +20,11 @@ The owner subsequently requested proportionate testing: focused behavior tests w
 Additive migration 17 attributes historical work and immutable audit records to the legacy business mission using column defaults, without disabling audit triggers or rewriting ledger contents. Inserts inherit mission attribution from linked work; later reassignment is rejected. Orders are event-sourced, so their events carry mission attribution rather than creating a second orders table. Directions retain one current entry per mission. New mission APIs enforce a single active mission and paused activation; template departments and CEO department proposals preserve owner and headcount controls.
 
 Validation: build and typecheck; 3 mission migration/activation/scoping tests, 5 reset tests, 1 persistence test and 36 organization tests passed. The isolated 13-section dashboard smoke check passed. No personal instance was restarted or migrated.
+
+## Step 2: finite lifecycle and spending admission
+
+CEO completion requests pin exact document versions and recorded evidence for each acceptance condition. The request hashes the mission revision, conditions and deliverable; only an authenticated owner decision can complete it. Work stops while confirmation is pending. Finite-cycle stall checks use recorded task results (excluding the CEO's own repetitive cycle completions), document versions, completed reads and non-model approvals. A stall pauses the mission and creates one owner request. Ongoing missions retain their cycle behavior.
+
+Mission admission includes settled ledger costs and unresolved model/action/SMS holds. Dispatch checks cover models, research, email, SMS and publishing. Owner resume can revise mission limits without releasing holds. Migration 18 enforces aggregate parent allocations at the database boundary; child inference also checks its remaining allocation. This intentionally replaces the earlier advisory delegation estimates to meet the requested invariant.
+
+Validation: 80 distinct focused tests passed across lifecycle, organization, research gateway, email, deployments, reset and persistence. A circular schema import found by the gateway tests was fixed by isolating the completion input schema. Build/typecheck and isolated dashboard smoke passed. No live provider calls or messages.

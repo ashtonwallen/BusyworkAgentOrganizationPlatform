@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {migration18} from './delegation-schema.js';
 import {resolve} from 'node:path';
 import type {HiveService} from './service.js';
 import {one,event,type Row} from './db.js';
@@ -55,6 +56,7 @@ export async function resetBusiness(service:HiveService,revision:number,workspac
    await tx.query('INSERT INTO hive_migrations(version) VALUES($1)',[version]);
   }
   await tx.exec(migration17);await tx.query('INSERT INTO hive_migrations(version) VALUES(17)');
+  await tx.exec(migration18);await tx.query('INSERT INTO hive_migrations(version) VALUES(18)');
   const preserved=['daily_cap','live_cap','capital_allocation','max_depth','max_agents','max_concurrency','approval_policy','ceo_model_id','ceo_review_model_id','cycle_budget','cycle_tokens','cycle_interval_minutes'];
   await tx.query(`UPDATE company SET ${preserved.map((key,i)=>`${key}=$${i+1}`).join(',')},revision=$${preserved.length+1},status='PAUSED' WHERE id=1`,
    [...preserved.map(key=>key==='approval_policy'?JSON.stringify({...company[key],smsEnabled:false}):company[key]),Number(company.revision)+1]);
