@@ -25,7 +25,8 @@ export function directionCard() {
   const byOwner = d.set_by_role === 'Owner';
   const s = d.scorecard;
   // A direction is a claim about what will work. Show what it has produced so far.
-  const nothingYet = s && s.daysActive >= 1 && !s.completedTasks && Number(s.revenueUsd) === 0;
+  const commerce=s&&Object.hasOwn(s,'revenueUsd');
+  const nothingYet = s && s.daysActive >= 1 && !s.completedTasks && !s.recordedProgress?.documentVersions && !s.recordedProgress?.fetchedSources && !s.recordedProgress?.approvedActions;
   return `<section class="card direction-card">
     <div class="card-header">
       <div><div class="eyebrow">Operating direction</div><h2>${esc(d.headline)}</h2></div>
@@ -41,16 +42,16 @@ export function directionCard() {
         </span>
       </div>
       ${s ? `<div class="scorecard">
-        <span class="eyebrow">Company activity since this edit${s.daysActive ? `, ${s.daysActive} ${s.daysActive === 1 ? 'day' : 'days'} ago` : ''}</span>
+        <span class="eyebrow">Mission activity since this edit${s.daysActive ? `, ${s.daysActive} ${s.daysActive === 1 ? 'day' : 'days'} ago` : ''}</span>
         <div class="scorecard-row">
-          <div><strong>${money(s.revenueUsd)}</strong><span>earned</span></div>
+          ${commerce?`<div><strong>${money(s.revenueUsd)}</strong><span>earned</span></div>`:''}
           <div><strong>${money(s.spendUsd)}</strong><span>spent</span></div>
           <div><strong>${s.completedTasks}</strong><span>tasks completed</span></div>
-          <div><strong>${s.opportunitiesOpened}</strong><span>opportunities</span></div>
+          ${commerce?`<div><strong>${s.opportunitiesOpened}</strong><span>opportunities</span></div>`:`<div><strong>${s.recordedProgress?.documentVersions??0}</strong><span>document versions</span></div>`}
           ${s.failedTasks ? `<div class="bad"><strong>${s.failedTasks}</strong><span>failed</span></div>` : ''}
         </div>
-        <p class="section-note">Company-wide totals for this period; includes conversations and unrelated work, not results attributed to this offer.</p>
-        ${nothingYet ? '<p class="section-note">No completed tasks or revenue are recorded in this reporting period.</p>' : ''}
+        <p class="section-note">Mission totals for this period. Activity alone does not establish that completion conditions are satisfied.</p>
+        ${nothingYet ? '<p class="section-note">No recorded progress in this reporting period.</p>' : ''}
       </div>` : ''}
       ${byOwner && running ? '<p class="section-note">You are steering. The CEO can still replace this when its evidence disagrees.</p>' : ''}
     </div>

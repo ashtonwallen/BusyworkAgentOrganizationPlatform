@@ -28,3 +28,9 @@ CEO completion requests pin exact document versions and recorded evidence for ea
 Mission admission includes settled ledger costs and unresolved model/action/SMS holds. Dispatch checks cover models, research, email, SMS and publishing. Owner resume can revise mission limits without releasing holds. Migration 18 enforces aggregate parent allocations at the database boundary; child inference also checks its remaining allocation. This intentionally replaces the earlier advisory delegation estimates to meet the requested invariant.
 
 Validation: 80 distinct focused tests passed across lifecycle, organization, research gateway, email, deployments, reset and persistence. A circular schema import found by the gateway tests was fixed by isolating the completion input schema. Build/typecheck and isolated dashboard smoke passed. No live provider calls or messages.
+
+## Step 3: mission accountability
+
+Direction scorecards now isolate their mission's costs and outcomes. All report completed/failed work, spend, recorded activity and cited completion-condition evidence. Only commerce-enabled missions expose revenue, refunds and opportunity metrics. The CEO's cycle guidance and direction card use the same distinction. Activity is explicitly not proof that acceptance conditions are satisfied.
+
+Validation: 37 tests passed (organization and mission-scorecard), including cross-mission financial isolation and absence of commercial metrics in research. Build/typecheck and the 13-section smoke check passed.

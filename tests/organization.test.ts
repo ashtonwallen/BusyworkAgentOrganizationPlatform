@@ -198,7 +198,7 @@ it('measures what a direction produced and puts that record in the next CEO cycl
   await org.tick();
   const next=await one(db,"SELECT objective FROM tasks WHERE role='CEO' ORDER BY created_at DESC LIMIT 1");
   expect(next.objective).toContain('$42.500000 revenue');
-  expect(next.objective).toContain('company-wide period totals');
+  expect(next.objective).toContain('mission-wide period totals');
 });
 const POOL=[
   {id:'c-rigorous',name:'Bly Okonkwo',archetype:'Analyst',bio:'Careful with numbers.',traits:{caution:4,rigor:5,dissent:3,initiative:2,thrift:4}},

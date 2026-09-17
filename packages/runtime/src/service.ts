@@ -39,19 +39,26 @@ const terminal = ["COMPLETED", "CANCELLED", "FAILED", "EXPIRED"];
  * What has actually happened since a direction was set. A strategy that produces
  * nothing should be visible as such — to the owner, and to the CEO on its next cycle.
  */
-export async function directionScorecard(tx: Pick<Tx, "query">, since: string | Date) {
-  const at = new Date(since).toISOString();
-  const row = await one(tx, `SELECT
-    (SELECT COUNT(*)::integer FROM tasks WHERE status='COMPLETED' AND finished_at>=$1) AS completed,
-    (SELECT COUNT(*)::integer FROM tasks WHERE status IN ('FAILED','EXPIRED') AND finished_at>=$1) AS failed,
-    (SELECT COUNT(*)::integer FROM experiments WHERE created_at>=$1) AS opportunities,
-    (SELECT COALESCE(SUM(amount),0)::text FROM ledger WHERE account='BUSINESS' AND kind='REVENUE' AND occurred_at>=$1) AS revenue,
-    (SELECT COALESCE(SUM(amount),0)::text FROM ledger WHERE account='BUSINESS' AND kind='REFUND' AND occurred_at>=$1) AS refunds,
-    (SELECT COALESCE(SUM(amount),0)::text FROM ledger WHERE kind='COST' AND account<>'TEST' AND occurred_at>=$1) AS spend`, [at]);
+export async function directionScorecard(tx: Pick<Tx, "query">, since: string | Date, missionId?:string) {
+  const at=new Date(since).toISOString();
+  const mission=missionId?await one(tx,'SELECT * FROM missions WHERE id=$1',[missionId]):await currentMission(tx);
+  const row=await one(tx, `SELECT
+   (SELECT COUNT(*)::integer FROM tasks WHERE mission_id=$2 AND status='COMPLETED' AND finished_at>=$1) AS completed,
+   (SELECT COUNT(*)::integer FROM tasks WHERE mission_id=$2 AND status IN ('FAILED','EXPIRED') AND finished_at>=$1) AS failed,
+   (SELECT COUNT(*)::integer FROM experiments WHERE mission_id=$2 AND created_at>=$1) AS opportunities,
+   (SELECT COALESCE(SUM(amount),0)::text FROM ledger WHERE mission_id=$2 AND account='BUSINESS' AND kind='REVENUE' AND occurred_at>=$1) AS revenue,
+   (SELECT COALESCE(SUM(amount),0)::text FROM ledger WHERE mission_id=$2 AND account='BUSINESS' AND kind='REFUND' AND occurred_at>=$1) AS refunds,
+   (SELECT COALESCE(SUM(amount),0)::text FROM ledger WHERE mission_id=$2 AND kind='COST' AND account<>'TEST' AND occurred_at>=$1) AS spend,
+   (SELECT COUNT(*)::integer FROM document_versions WHERE mission_id=$2 AND created_at>=$1) AS documents,
+   (SELECT COUNT(*)::integer FROM actions WHERE mission_id=$2 AND action_type='READ_PUBLIC_PAGE' AND status='EXECUTED' AND created_at>=$1) AS sources,
+   (SELECT COUNT(*)::integer FROM approvals ap JOIN actions a ON a.id=ap.action_id WHERE ap.mission_id=$2 AND ap.created_at>=$1 AND ap.decision='APPROVE' AND a.action_type<>'MODEL_CALL') AS approved`,[at,mission?.id??null]);
+  const completion=(await tx.query<Row>("SELECT payload FROM events WHERE entity_id=$1 AND type='mission.completion_requested' ORDER BY sequence DESC LIMIT 1",[mission?.id??null])).rows[0]?.payload;
   return {
-    completedTasks: row.completed, failedTasks: row.failed, opportunitiesOpened: row.opportunities,
-    revenueUsd: formatUsd(row.revenue), refundsUsd: formatUsd(row.refunds), spendUsd: formatUsd(row.spend),
-    daysActive: Math.max(0, Math.floor((Date.now() - new Date(at).getTime()) / 86400000)),
+   completedTasks:row.completed,failedTasks:row.failed,spendUsd:formatUsd(row.spend),
+   recordedProgress:{documentVersions:row.documents,fetchedSources:row.sources,approvedActions:row.approved},
+   completionConditions:(mission?.definition_of_done??[]).map((condition:string,index:number)=>({condition,evidence:completion?.packet.conditions.find((item:any)=>item.conditionIndex===index)?.evidence??[],ownerConfirmed:mission?.status==='COMPLETED'})),
+   ...(mission?.capabilities.includes('commerce')?{opportunitiesOpened:row.opportunities,revenueUsd:formatUsd(row.revenue),refundsUsd:formatUsd(row.refunds)}:{}),
+   daysActive:Math.max(0,Math.floor((Date.now()-new Date(at).getTime())/86400000)),
   };
 }
 

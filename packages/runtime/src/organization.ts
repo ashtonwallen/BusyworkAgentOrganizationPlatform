@@ -214,10 +214,10 @@ No operating direction is recorded. Choose one and set it with SET_DIRECTION (ta
         direction = [
           `
 Your current operating direction: ${current.headline}. ${current.statement}`,
-          `Company activity since the latest direction edit ${r.daysActive} day(s) ago: ${r.completedTasks} completed objective(s), ${r.failedTasks} failed,`,
-          `${r.opportunitiesOpened} opportunity(ies) opened, $${r.revenueUsd} revenue, $${r.refundsUsd} refunded and $${r.spendUsd} spent.`,
-          "These are company-wide period totals, including conversations and unrelated work, not attributable results of this offer. Direction edits restart this reporting window, not the business experiment. Assess actual buyer evidence and material progress before keeping or changing direction with SET_DIRECTION.",
-          "Do not treat more documents or fresher spending snapshots as commercial progress. Avoid repeated brief revisions when no material evidence or owner requirement has changed.",
+          `Mission activity since the latest direction edit ${r.daysActive} day(s) ago: ${r.completedTasks} completed objective(s), ${r.failedTasks} failed and $${r.spendUsd} spent.`,
+          `Recorded progress: ${JSON.stringify(r.recordedProgress)}. Completion conditions and cited evidence: ${JSON.stringify(r.completionConditions)}.`,
+          mission.capabilities.includes('commerce')?`${r.opportunitiesOpened} opportunity(ies) opened, $${r.revenueUsd} revenue, $${r.refundsUsd} refunded. Assess buyer evidence; documents and activity alone do not establish commercial progress.`:'Assess evidence against the mission completion conditions, not revenue. Completed cycles alone do not prove those conditions are satisfied.',
+          'These are mission-wide period totals, not proof that the direction caused the outcomes. A direction with no recorded progress warrants reconsideration. Explain keeping or changing it with SET_DIRECTION. Do not invent extra work after the mission is done.',
         ].join(" ");
       }
       await tx.query(`INSERT INTO tasks(id,root_id,objective,role,depth,status,budget,token_budget,expires_at,model_id,review_model_id,employee_id)
