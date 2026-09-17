@@ -1,3 +1,4 @@
+import {proposeCampaign,readCampaign} from './campaigns.js';
 import {assertMissionOperation} from './mission-capabilities.js';
 import {cancelAssignedWork} from './task-cancellation.js';
 import {currentMission,proposeDepartment} from './missions.js';
@@ -280,7 +281,13 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
           const prior = await tx.query("SELECT id FROM operations WHERE id=$1", [operationId]); if (prior.rows.length) return;
           const sender = source.employee_id ?? "company";
           let id:string = randomUUID();
-          if(operation.type==='CANCEL_ASSIGNED_WORK'){
+          if(operation.type==='READ_CAMPAIGN'){
+            if(!await emailPermission(tx,sender,'can_read'))throw new DomainError('Email read permission is required.');
+            const result=await readCampaign(tx,operation.target,operation.resultOffset??0);
+            await tx.query("INSERT INTO messages(id,sender_id,recipient_id,kind,subject,body,task_id) VALUES($1,'company',$2,'MESSAGE','Campaign record',$3,$4)",[id,sender,JSON.stringify(result),source.id]);
+          } else if(operation.type==='PROPOSE_CAMPAIGN'){
+            const result=await proposeCampaign(tx,operation.campaign,sender,source.id);id=result.id;
+          } else if(operation.type==='CANCEL_ASSIGNED_WORK'){
             await cancelAssignedWork(tx,sender,operation.target,source.id,operation.instructions);
           } else if(operation.type==='SAVE_ORDER'){
             if(!operation.order)throw new DomainError('Provide order fields and expectedVersion.');if(operation.target!=='new')id=operation.target;

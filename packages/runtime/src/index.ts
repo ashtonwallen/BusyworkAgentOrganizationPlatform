@@ -49,3 +49,5 @@ export {confirmMissionCompletion,stopMission,resumeMission,missionExposure,missi
 export {configuredSearch,searchTool,BraveSearchProvider} from './web-search.js';
 export {runtimeToolRegistry} from './tools.js';
 export {sourceIndex,readSource} from './source-records.js';
+
+export {proposeCampaign,decideCampaign,campaignIndex,recordOptOut} from './campaigns.js';

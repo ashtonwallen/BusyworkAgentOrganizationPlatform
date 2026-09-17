@@ -1,3 +1,4 @@
+import {identifiedEmail,assertContactable,ingestOptOut,campaignAuthorization,reserveCampaignSend} from './campaigns.js';
 import {assertMissionExternal} from './mission-capabilities.js';
 import {staleOrderEmailsSql} from './order-email-status.js';
 import {missionAdmission} from './mission-lifecycle.js';
@@ -31,9 +32,10 @@ export async function proposeBusinessEmail(tx:Tx,raw:unknown,actor:string,taskId
  await one(tx,'SELECT id FROM company WHERE id=1 FOR UPDATE');
  if(!await emailPermission(tx,actor,'can_send'))throw new DomainError('This employee does not have business-email send permission.');
  await assertMissionExternal(tx,taskId?(await one(tx,'SELECT mission_id FROM tasks WHERE id=$1',[taskId])).mission_id:null,'SEND_MESSAGE');
- const draft=emailDraftSchema.parse(raw);
+ const draft=identifiedEmail(emailDraftSchema.parse(raw));
+ await assertContactable(tx,[...draft.to,...draft.cc,...draft.bcc]);
  const existing=(await tx.query<Row>('SELECT * FROM email_messages WHERE id=$1',[requestId])).rows[0];
- if(existing){if(existing.author_id!==actor||canonical(emailDraftSchema.parse(existing.draft))!==canonical(draft)||existing.action_id!==requestId)throw new DomainError('Email request ID belongs to a different message.');return existing;}
+ if(existing){if(existing.author_id!==actor||canonical(identifiedEmail(emailDraftSchema.parse(existing.draft)))!==canonical(draft)||existing.action_id!==requestId)throw new DomainError('Email request ID belongs to a different message.');return existing;}
  if(taskId&&!((await tx.query('SELECT id FROM tasks WHERE id=$1 AND employee_id=$2',[taskId,actor])).rows.length))throw new DomainError('Email source task does not belong to the employee.');
  await tx.query("INSERT INTO email_mailboxes(address,provider) VALUES($1,'gmail') ON CONFLICT DO NOTHING",[businessMailbox]);
  let reply:Row|undefined;
@@ -83,7 +85,7 @@ async function sendCandidates(tx:Pick<Tx,'query'>,now:Date,limit:number){
  AND m.id NOT IN (${staleOrderEmailsSql})
  AND (m.author_id='owner' OR (e.status='ACTIVE' AND COALESCE(p.can_send,e.role='CEO')))
  AND (a.task_id IS NULL OR (t.status NOT IN ('CANCELLED','EXPIRED') AND t.expires_at>$2))
- AND ((a.status='PENDING' AND a.revises_action_id IS NULL AND c.approval_policy->>'communications'='false') OR
+ AND ((a.status='PENDING' AND a.revises_action_id IS NULL AND (c.approval_policy->>'communications'='false' OR m.draft->>'campaignId' IS NOT NULL)) OR
  (a.status='APPROVED' AND EXISTS(SELECT 1 FROM approvals ap WHERE ap.action_id=a.id AND ap.decision='APPROVE' AND ap.action_hash=a.action_hash)))
  ORDER BY m.created_at,m.id LIMIT $3`,[businessMailbox,now,limit])).rows;
 }
@@ -108,9 +110,13 @@ export class BusinessEmail {
      if(message.action_payload?.integration!=='business-email'||message.action_payload.version!==1||message.action_payload.mimeSha256!==createHash('sha256').update(message.raw_mime).digest('hex'))throw new DomainError('Email MIME no longer matches the approved proposal.');
      if(new Date(message.expires_at)<=this.service.now()||!await emailPermission(tx,message.author_id,'can_send'))continue;
      if(message.task_id){const task=await one(tx,'SELECT status,expires_at FROM tasks WHERE id=$1',[message.task_id]);if(['CANCELLED','EXPIRED'].includes(task.status)||new Date(task.expires_at)<=this.service.now())continue;}
+     try{await assertContactable(tx,[...message.draft.to,...message.draft.cc,...message.draft.bcc]);}catch(error){await tx.query('UPDATE email_messages SET error=$2 WHERE id=$1',[message.id,(error as Error).message]);continue;}
+     const campaign=await campaignAuthorization(tx,emailDraftSchema.parse(message.draft),message.mission_id,this.service.now(),message.id);
+     if(message.draft.campaignId&&!campaign&&message.action_status!=='APPROVED')continue;
      if(message.action_status==='APPROVED'){if(!(await tx.query("SELECT id FROM approvals WHERE action_id=$1 AND decision='APPROVE' AND action_hash=$2",[message.action_id,message.action_hash])).rows.length)continue;}
-     else if(company.approval_policy.communications!==false)continue;
-     await tx.query("UPDATE email_messages SET status='DISPATCHING',dispatched_at=$2 WHERE id=$1",[message.id,this.service.now()]);await tx.query("UPDATE actions SET status='EXECUTING' WHERE id=$1",[message.action_id]);await event(tx,'email.dispatched',message.id,{authorization:message.action_status==='APPROVED'?'OWNER_APPROVAL':'COMMUNICATIONS_POLICY'});return message;
+     else if(company.approval_policy.communications!==false&&!campaign)continue;
+     if(campaign)await reserveCampaignSend(tx,campaign,message);
+     await tx.query("UPDATE email_messages SET status='DISPATCHING',dispatched_at=$2 WHERE id=$1",[message.id,this.service.now()]);await tx.query("UPDATE actions SET status='EXECUTING' WHERE id=$1",[message.action_id]);await event(tx,'email.dispatched',message.id,{authorization:message.action_status==='APPROVED'?'OWNER_APPROVAL':campaign?'CAMPAIGN_APPROVAL':'COMMUNICATIONS_POLICY',campaignId:campaign?.id??null});return message;
     }
    });if(!admitted)return;
    try{const receipt=await this.provider.send(admitted.raw_mime,admitted.thread_id??undefined);await this.confirmSent(admitted.id,receipt.providerMessageId,receipt.threadId);}
@@ -137,6 +143,7 @@ export class BusinessEmail {
   // Leave uncertain-send reconciliation to its dedicated exact-receipt path.
   if(matching)return matching.id;
   const id=randomUUID();await tx.query("INSERT INTO email_messages(id,mailbox,direction,status,provider_message_id,thread_id,rfc_message_id,content,received_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",[id,businessMailbox,message.direction,message.direction==='INBOUND'?'RECEIVED':'SENT',message.providerMessageId,message.threadId,message.headers['message-id']??null,JSON.stringify(message),message.receivedAt]);
+  await ingestOptOut(tx,id,message);
   const references=String(message.headers['in-reply-to']??'')+' '+String(message.headers.references??'');
   await tx.query("INSERT INTO email_links(message_id,kind,entity_id,source) SELECT DISTINCT $1,l.kind,l.entity_id,CASE WHEN m.rfc_message_id=ANY($4::text[]) THEN 'REFERENCE' ELSE 'THREAD' END FROM email_links l JOIN email_messages m ON m.id=l.message_id WHERE m.mailbox=$2 AND (m.thread_id=$3 OR m.rfc_message_id=ANY($4::text[])) ON CONFLICT DO NOTHING",[id,businessMailbox,message.threadId,references.match(/<[^<>\s]+>/g)??[]]);
   const participants=[...message.from,...message.to,...message.cc].map(a=>a.toLowerCase()).filter(a=>a!==businessMailbox);

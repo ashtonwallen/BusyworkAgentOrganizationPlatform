@@ -3,7 +3,7 @@ import {artifactSchema,conversationArtifactSchema} from './contracts.js';
 import {internalReadInput} from './internal-read-input.js';
 import {enabledOperations,readFamilies,requiredFamilies,requireFamilies} from './operation-families.js';
 
-const fieldFamilies:Record<string,string[]>={search:['research'],documentClaims:['documents'],order:['commerce'],orderReference:['commerce'],experimentId:['commerce'],workspaceSource:['documents'],workspaceInputs:['code'],businessEntity:['outreach'],email:['outreach'],emailAccess:['outreach'],releaseId:['deployment'],publishingMode:['deployment'],releaseFiles:['deployment'],ledgerBefore:['accounting']};
+const fieldFamilies:Record<string,string[]>={campaign:['outreach'],search:['research'],documentClaims:['documents'],order:['commerce'],orderReference:['commerce'],experimentId:['commerce'],workspaceSource:['documents'],workspaceInputs:['code'],businessEntity:['outreach'],email:['outreach'],emailAccess:['outreach'],releaseId:['deployment'],publishingMode:['deployment'],releaseFiles:['deployment'],ledgerBefore:['accounting']};
 export function missionArtifactSchema(enabled:readonly string[],conversation=false){
  const names=enabledOperations(enabled),base=conversation?conversationArtifactSchema:artifactSchema;
  const omitted=Object.fromEntries(Object.entries(fieldFamilies).filter(([,families])=>families.some(f=>!enabled.includes(f))).map(([key])=>[key,true]));

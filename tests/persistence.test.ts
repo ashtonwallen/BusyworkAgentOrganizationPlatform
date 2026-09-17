@@ -14,7 +14,7 @@ it('reopens durable state without duplicating migrations or losing exact money a
     db = await openDatabase(join(directory, 'postgres')); service = new HiveService(db, createModels({}));
     expect((await service.snapshot()).metrics.availableCapitalUsd).toBe('123.123456'); expect((await one(db, 'SELECT status FROM actions WHERE id=$1', [id])).status).toBe('APPROVED');
     const restored=await one(db,'SELECT * FROM static_releases WHERE id=$1',[release.id]);expect(restored.content_hash).toBe(release.content_hash);expect(restored.manifest.files[0].content).toBe('<h1>Durable release</h1>');
-    expect((await db.query('SELECT * FROM hive_migrations')).rows).toHaveLength(19);
+    expect((await db.query('SELECT * FROM hive_migrations')).rows).toHaveLength(20);
     await expect(db.query("UPDATE actions SET target='changed' WHERE id=$1", [id])).rejects.toThrow(); await expect(db.query('DELETE FROM approvals')).rejects.toThrow('append-only');
   } finally { await db?.close(); await rm(directory, { recursive: true, force: true }); }
 });

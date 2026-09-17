@@ -1,3 +1,4 @@
+import {proposeCampaign,decideCampaign,campaignIndex,recordOptOut} from '@hive/runtime';
 import {proposeOrderEmail} from '@hive/runtime';
 import {sourceIndex,readSource,currentMission} from '@hive/runtime';
 import {createMission,activateMission,approveDepartment} from '@hive/runtime';
@@ -109,6 +110,11 @@ export function buildApp(options: AppOptions = {}) {
     const id = (request: { params: unknown }) => z.object({ id: shortText }).parse(request.params).id;
     api.get("/company/state", async () => ({ ready: !!service, ...await svc().snapshot() }));
     api.get("/snapshot", async () => svc().snapshot());
+    api.get('/email/campaigns',async()=>campaignIndex(svc().db));
+    api.post('/email/campaigns',async request=>svc().db.transaction(tx=>proposeCampaign(tx,request.body,'owner')));
+    api.post('/email/campaigns/:id/decision',async request=>{const x=z.object({hash:z.string().length(64),decision:z.enum(['APPROVE','REJECT','REVOKE'])}).strict().parse(request.body);await decideCampaign(svc(),id(request),x.hash,x.decision);return {ok:true};});
+    api.get('/email/do-not-contact',async()=> (await svc().db.query('SELECT * FROM do_not_contact ORDER BY created_at DESC')).rows);
+    api.post('/email/do-not-contact',async request=>{const x=z.object({address:z.email(),reason:z.string().min(1).max(1000)}).strict().parse(request.body);await svc().db.transaction(tx=>recordOptOut(tx,x.address,x.reason));return {ok:true};});
     api.post('/email/connect',async(_request,reply)=>{if(!options.emailOAuth)throw new DomainError('Configure HIVE_GMAIL_CLIENT_ID and HIVE_GMAIL_CLIENT_SECRET on the server, then restart.');const url=options.emailOAuth.begin();reply.setCookie('hive_email_oauth',new URL(url).searchParams.get('state')!,{httpOnly:true,sameSite:'lax',path:'/email/oauth/callback',maxAge:600});return {url};});
     api.get('/email/history',async request=>{const {before,search}=z.object({before:shortText.optional(),search:z.string().max(250).default('')}).parse(request.query);return readBusinessEmail(svc().db,'owner','inbox',before,0,search);});
     api.get('/email/messages/:id/attachments/:index',async(request,reply)=>{const {id,index}=z.object({id:z.uuid(),index:z.coerce.number().int().min(0).max(99)}).parse(request.params);const message=await one(svc().db,'SELECT direction FROM email_messages WHERE id=$1',[id]);const attachment=message.direction==='INBOUND'?await cachedEmailAttachment(svc().db,'owner',id,index):await frozenEmailAttachment(svc().db,id,index);return reply.type(attachment.mimeType).header('Content-Disposition',`attachment; filename="${attachment.filename}"`).header('Cache-Control','no-store').send(attachment.content);});

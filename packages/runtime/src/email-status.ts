@@ -1,9 +1,11 @@
+import {campaignAuthorization,assertContactable} from './campaigns.js';
+import {emailDraftSchema} from './email-provider.js';
 import {staleOrderEmails} from './order-email-status.js';
 import type {Tx,Row} from './db.js';
 
 /** Read-only queue explanation. Dispatch still rechecks authority under its lock. */
 export async function emailQueueStatus(db:Pick<Tx,'query'>,now:Date){
- const rows=(await db.query<Row>(`SELECT m.id,a.status AS action_status,a.expires_at,
+ const rows=(await db.query<Row>(`SELECT m.id,m.draft,m.mission_id,a.status AS action_status,a.expires_at,
  a.task_id,a.revises_action_id,t.status AS task_status,t.expires_at AS task_expires,
  c.status AS company_status,c.approval_policy,c.max_concurrency,
  b.enabled,(b.credential_ciphertext IS NOT NULL) AS connected,b.daily_send_limit,
@@ -17,7 +19,7 @@ export async function emailQueueStatus(db:Pick<Tx,'query'>,now:Date){
  LEFT JOIN employees e ON e.id=m.author_id LEFT JOIN email_permissions p ON p.employee_id=e.id
  WHERE m.status='QUEUED' AND c.id=1`,[now])).rows;
  const stale=await staleOrderEmails(db);
- return Object.fromEntries(rows.map(r=>{
+ return Object.fromEntries(await Promise.all(rows.map(async r=>{
   const reasons:{code:string;message:string}[]=[];
   const add=(code:string,message:string)=>reasons.push({code,message});
   if(stale.has(r.id))add('ORDER_CHANGED','The linked order scope, price, deadline, deliverables or cancellation state changed. Review the current order and prepare a new proposal. This draft will not be sent.');
@@ -26,12 +28,15 @@ export async function emailQueueStatus(db:Pick<Tx,'query'>,now:Date){
   if(r.task_id&&(!r.task_status||['CANCELLED','EXPIRED'].includes(r.task_status)||new Date(r.task_expires)<=now))add('SOURCE_INACTIVE','The originating objective was cancelled or expired.');
   if(!r.permitted)add('PERMISSION_REQUIRED','The author no longer has permission to send business email.');
   if(r.action_status==='APPROVED'&&!r.approved)add('APPROVAL_INVALID','No matching approval exists for this exact email.');
-  if(r.action_status==='PENDING'&&(r.revises_action_id || r.approval_policy.communications!==false))add('AWAITING_APPROVAL','Owner approval is required. Open Waiting on you to review the proposal.');
+  const campaign=await campaignAuthorization(db,emailDraftSchema.parse(r.draft),r.mission_id,now,r.id);
+  try{await assertContactable(db,[...r.draft.to,...r.draft.cc,...r.draft.bcc]);}catch{add('DO_NOT_CONTACT','A recipient has opted out. This message will not be sent, even if approved.');}
+  if(r.draft.campaignId&&!campaign&&r.action_status!=='APPROVED')add('CAMPAIGN_BOUNDS','Campaign approval is missing, revoked, exhausted, outside its time window, or does not cover this exact email. Individual approval is required.');
+  if(r.action_status==='PENDING'&&(r.revises_action_id || (r.approval_policy.communications!==false&&!campaign)))add('AWAITING_APPROVAL','Owner approval is required. Open Waiting on you to review the proposal.');
   if(!r.connected)add('CONNECTION_REQUIRED','Connect Google Workspace in Business email.');
   if(!r.enabled)add('MAILBOX_DISABLED','Enable the mailbox in Email settings.');
   if(r.company_status!=='RUNNING')add('COMPANY_STOPPED','The company must be running to send email.');
   if(r.daily_used>=r.daily_send_limit)add('DAILY_LIMIT','The daily email send limit is reached. It resets at midnight UTC.');
   if(r.occupied>=r.max_concurrency)add('WAITING_FOR_CAPACITY','Waiting for an available execution slot.');
   return [r.id,{reasons,message:reasons.length?reasons.map(x=>x.message).join(' '):'Queued for the next email worker check. Provider and integrity checks still apply.'}];
- }));
+ })));
 }

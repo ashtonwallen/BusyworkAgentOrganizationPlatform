@@ -22,3 +22,6 @@ After snapshot or dashboard changes, coordinate a separate re-sync of downstream
 
 - [x] Mission capability families filter agent schemas, prompts, internal reads and dispatch; measured all six templates.
 - [ ] On-demand operation documentation for very small local contexts; current family filtering does not guarantee 8K WORK fits.
+
+- [x] Exact-template/list campaign approvals, cap/window dispatch checks, immutable slot reservations and do-not-contact enforcement.
+- [ ] Broader opt-out phrase recognition and evidence-backed owner re-subscription workflow; no automatic unblocking.

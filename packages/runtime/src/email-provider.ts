@@ -3,6 +3,7 @@ import {instanceSettings} from './instance-settings.js';
 export const businessMailbox=instanceSettings.mailbox;
 const address=z.email().max(254).refine(v=>!/[\r\n]/.test(v));
 export const emailDraftSchema=z.object({
+ campaignId:z.uuid().nullish(),
  to:z.array(address).max(50).default([]),cc:z.array(address).max(50).default([]),bcc:z.array(address).max(50).default([]),
  subject:z.string().min(1).max(998).refine(v=>!/[\r\n]/.test(v)),text:z.string().max(500000).default(''),html:z.string().max(500000).default(''),replyTo:address.nullish().transform(v=>v??undefined),
  documentAttachments:z.array(z.object({path:z.string().min(1).max(250),version:z.number().int().positive(),filename:z.string().max(150).regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]*\.(txt|md|csv|json|pdf)$/i)}).strict()).max(5).default([]),

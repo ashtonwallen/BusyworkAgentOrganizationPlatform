@@ -67,3 +67,13 @@ Prompt measurements below use identical synthetic empty missions and mock calls:
 Reproduce current measurements with `node scripts/measure-mission-prompts.mjs` after building. Family filtering substantially reduces noncommercial work prompts but does not guarantee an 8K model can fit a work call; actual context/output capacity is still checked before dispatch. Further on-demand operation documentation is deferred rather than silently truncating safeguards.
 
 Validation: 15 focused tests passed (mission capabilities, plan capabilities, gateway); build/typecheck passed. Full consistency suite runs after remaining steps. No paid inference or external transport.
+
+## Step 7: bounded outreach approval
+
+Campaign proposals freeze sender, exact plain/HTML template, explicit recipient addresses and provenance, cap and time window under a hash. Only the owner can approve/reject/revoke. Dispatch rechecks current approval and records an append-only recipient/slot reservation before sending. Uncertain or failed dispatches keep their slot; a campaign does not silently authorize retries. Exceptions need individual exact-message approval even when routine communication approval is disabled. Existing permission, mission, mailbox and financial checks remain.
+
+Every newly proposed email freezes an identifying sender/opt-out footer. All To/Cc/Bcc addresses are checked against an append-only do-not-contact list at proposal and dispatch. Simple explicit STOP/unsubscribe replies record opt-outs during deduplicated ingestion; the owner can record other requests from Email ? Campaign approvals ? Do-not-contact list. Queues expose opt-out and campaign-bound reasons. Campaign review shows the exact template, recipients, time window, cap and hash.
+
+V1 deliberately supports explicit lists, not dynamic selection rules or template substitution. Agent lists require a fetched source containing the exact address; owner lists are explicitly supplied. This verifies provenance, not consent, suitability, or whether an address is personal. Agents are forbidden to guess or scrape personal addresses. Ambiguous natural-language opt-outs still need review; no automatic re-subscription exists.
+
+Validation: 23 focused tests passed across campaigns, email, mission capabilities, reset and persistence. Build/typecheck and isolated dashboard smoke passed. All provider sends and inbound messages were synthetic.
