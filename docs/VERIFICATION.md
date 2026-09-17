@@ -34,3 +34,9 @@ Validation: 80 distinct focused tests passed across lifecycle, organization, res
 Direction scorecards now isolate their mission's costs and outcomes. All report completed/failed work, spend, recorded activity and cited completion-condition evidence. Only commerce-enabled missions expose revenue, refunds and opportunity metrics. The CEO's cycle guidance and direction card use the same distinction. Activity is explicitly not proof that acceptance conditions are satisfied.
 
 Validation: 37 tests passed (organization and mission-scorecard), including cross-mission financial isolation and absence of commercial metrics in research. Build/typecheck and the 13-section smoke check passed.
+
+## Step 4: web search
+
+`SEARCH_WEB` uses a pluggable provider interface with an initial Brave transport. No provider key or query price means unavailable. Proposals freeze provider/query/count/price; changed pricing requires a new proposal. Paid searches reserve before dispatch, check mission/daily/lifetime caps and settle the configured query price only on a confirmed response. Uncertain calls retain holds without retry. Search output is explicitly untrusted discovery content.
+
+Validation: 13 focused tests (search, gateway and capabilities) passed, including exact reservation before transport, once-only settlement, price-change rejection, cap enforcement, unavailable setup and credential isolation. Provider HTTP tests use injected responses; no live search account was called. Build/typecheck and dashboard smoke passed. Adapter contract was checked against the official Brave API reference linked in INTEGRATIONS.md.

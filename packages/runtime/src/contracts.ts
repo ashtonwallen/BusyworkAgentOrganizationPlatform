@@ -1,5 +1,6 @@
 import {orderInput} from './order-input.js';
 import {completionInput} from './mission-completion-input.js';
+import {searchInput} from './web-search.js';
 import {internalReadInput} from './internal-read-input.js';
 import {backlogInput} from './backlog-input.js';
 import {businessEntityInput} from './business-entities.js';
@@ -34,7 +35,8 @@ export const commercialArtifactSchema = z.object({
   readRequest:internalReadInput.nullish(),
   operations: z.array(z.object({
     missionCompletion:completionInput.nullish(),
-    type:z.enum(["COMPLETE_MISSION","PROPOSE_DEPARTMENT","CANCEL_ASSIGNED_WORK","SAVE_ORDER","READ_ORDER","SCHEDULE_BACKLOG_WORK","CANCEL_BACKLOG_SCHEDULE","READ_CONSULTATIONS","READ_ACCOUNTING","READ_LEDGER_ENTRY","LINK_TASK_EXPERIMENT","READ_BACKLOG","PLAN_WORK","START_BACKLOG_WORK","IMPORT_EMAIL_ATTACHMENT","RUN_PYTHON","FOLLOW_UP","CANCEL_FOLLOW_UP","CONFIGURE_MODEL","REGISTER_MODEL","LIST_CAPABILITIES","READ_ACTION_RESULT","REQUEST_REPLY","FIND_MESSAGES","READ_MESSAGE","RECONCILE_LOCAL_CALL","BUSINESS_ENTITY_FIND","BUSINESS_ENTITY_SET","READ_TASK_RESULT","READ_BROWSER_PAGE","WORKSPACE_COPY","WORKSPACE_WRITE","WORKSPACE_READ","WORKSPACE_LIST","BUSINESS_EMAIL_ACCESS","BUSINESS_EMAIL_SEND","BUSINESS_EMAIL_WITHDRAW","BUSINESS_EMAIL_READ","HIRE","ASSIGN_TASK","SET_MODEL","WRITE_DOCUMENT","READ_DOCUMENT","FIND_DOCUMENTS","PREPARE_RELEASE","SET_DIRECTION","MESSAGE","ESCALATION","MEETING","CREATE_EXPERIMENT","UPDATE_EXPERIMENT","READ_PUBLIC_PAGE","PROPOSE_EXTERNAL","REQUEST_OWNER","WAIT"]),
+    search:searchInput.nullish(),
+    type:z.enum(["SEARCH_WEB","COMPLETE_MISSION","PROPOSE_DEPARTMENT","CANCEL_ASSIGNED_WORK","SAVE_ORDER","READ_ORDER","SCHEDULE_BACKLOG_WORK","CANCEL_BACKLOG_SCHEDULE","READ_CONSULTATIONS","READ_ACCOUNTING","READ_LEDGER_ENTRY","LINK_TASK_EXPERIMENT","READ_BACKLOG","PLAN_WORK","START_BACKLOG_WORK","IMPORT_EMAIL_ATTACHMENT","RUN_PYTHON","FOLLOW_UP","CANCEL_FOLLOW_UP","CONFIGURE_MODEL","REGISTER_MODEL","LIST_CAPABILITIES","READ_ACTION_RESULT","REQUEST_REPLY","FIND_MESSAGES","READ_MESSAGE","RECONCILE_LOCAL_CALL","BUSINESS_ENTITY_FIND","BUSINESS_ENTITY_SET","READ_TASK_RESULT","READ_BROWSER_PAGE","WORKSPACE_COPY","WORKSPACE_WRITE","WORKSPACE_READ","WORKSPACE_LIST","BUSINESS_EMAIL_ACCESS","BUSINESS_EMAIL_SEND","BUSINESS_EMAIL_WITHDRAW","BUSINESS_EMAIL_READ","HIRE","ASSIGN_TASK","SET_MODEL","WRITE_DOCUMENT","READ_DOCUMENT","FIND_DOCUMENTS","PREPARE_RELEASE","SET_DIRECTION","MESSAGE","ESCALATION","MEETING","CREATE_EXPERIMENT","UPDATE_EXPERIMENT","READ_PUBLIC_PAGE","PROPOSE_EXTERNAL","REQUEST_OWNER","WAIT"]),
     target:shortText,title:shortText,instructions:text,budgetUsd:usd,tokenBudget:z.number().int().min(100).max(1000000),
     modelId:shortText,participants:z.array(shortText).max(20),scheduledAt:timestamp.nullable(),
     // HIRE only: which shortlisted person to bring on. Omitted, the best available fit is chosen.
@@ -81,11 +83,11 @@ export const experimentInput = z.object({
 }).strict();
 export const actionInput = z.object({
   taskId: shortText.optional(), experimentId: shortText.optional(),
-  actionType: z.enum(["SANDBOX_PURCHASE", "PURCHASE", "PUBLISH", "SEND_MESSAGE", "CREATE_ACCOUNT", "OTHER_EXTERNAL", "READ_PUBLIC_PAGE"]),
+  actionType: z.enum(["SANDBOX_PURCHASE", "PURCHASE", "PUBLISH", "SEND_MESSAGE", "CREATE_ACCOUNT", "OTHER_EXTERNAL", "READ_PUBLIC_PAGE", "SEARCH_WEB"]),
   target: shortText, payload: z.record(z.string(), z.unknown()), rationale: text, maxCostUsd: usd, expiresAt: timestamp
 }).strict();
 export const grantInput = z.object({
-  actionType: z.enum(["SANDBOX_PURCHASE", "PURCHASE", "PUBLISH", "SEND_MESSAGE", "CREATE_ACCOUNT", "OTHER_EXTERNAL", "READ_PUBLIC_PAGE"]),
+  actionType: z.enum(["SANDBOX_PURCHASE", "PURCHASE", "PUBLISH", "SEND_MESSAGE", "CREATE_ACCOUNT", "OTHER_EXTERNAL", "READ_PUBLIC_PAGE", "SEARCH_WEB"]),
   target: shortText, experimentId: shortText.optional(), maxTransactionUsd: usd, totalCapUsd: usd,
   expiresAt: timestamp, rationale: text
 }).strict();

@@ -12,7 +12,7 @@ Maintain one execution engine. Running a business is a mission template with com
 - Step 1: mission storage, legacy attribution, mission directions, templates and department proposals completed.
 - Step 2: owner-confirmed completion, evidence-based stall detection, mission spending caps and bounded delegation completed.
 - Step 3: mission-aware direction accountability completed.
-- Step 4: configurable web search through the approval gateway.
+- Step 4: configurable web search through the approval gateway completed (Brave adapter; provider interface supports later adapters).
 - Step 5: source records and deliverable citations.
 - Step 6: capability-filtered prompts and deterministic operation enforcement, with prompt-size measurements.
 - Step 7: bounded campaign approvals, do-not-contact enforcement and opt-outs.

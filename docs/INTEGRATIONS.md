@@ -27,3 +27,10 @@ Provide a token for your own account, a site ID, enablement and explicit deploym
 ## Python workspace programs
 
 Docker is optional for the application. The Python tool requires a Linux container engine and its pinned image. See `packages/runtime/src/sandbox.ts` for the exact image and resource limits. The runtime does not automatically pull images. Pull the documented digest deliberately before enabling this capability. The sandbox copies bounded text inputs and outputs, provides no network or host mounts, and does not let agents edit the platform source.
+## Web search
+
+The initial adapter uses [Brave Web Search](https://api-dashboard.search.brave.com/api-reference/web/search/get). Set `HIVE_SEARCH_PROVIDER=brave`, `BRAVE_SEARCH_API_KEY` and `HIVE_SEARCH_COST_USD` in the private instance environment. The price must match your provider contract; use `0` only for genuinely uncharged queries. Missing or invalid settings leave search unavailable. Credentials remain in the server transport and never appear in prompts or proposal payloads.
+
+`SEARCH_WEB` proposes a bounded query and result count through the normal research approval category. It freezes the provider, query, count and configured price. Paid searches reserve that amount before dispatch and respect mission, daily and lifetime paid caps. A confirmed response settles the configured per-query cost; transport failures retain the reservation as uncertain and are not retried automatically. Provider billing may still require reconciliation if your contract or prices change.
+
+Results are untrusted discovery snippets, not proof that linked pages have been fetched or that their claims are correct. Read source pages separately through the gateway. The `SearchProvider` interface supports further adapters without changing the agent operation; only Brave is shipped initially.

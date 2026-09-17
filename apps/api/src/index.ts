@@ -1,4 +1,5 @@
 import './environment.js';
+import {configuredSearch,runtimeToolRegistry} from '@hive/runtime';
 import {instanceSettings,sandboxAvailable} from '@hive/runtime';
 import {resetBusiness} from '@hive/runtime';
 import { buildApp } from "./app.js";
@@ -37,7 +38,8 @@ try {
   // People the CEO and its managers can hire. Absent config just means an empty pool.
   try{service.candidates=candidatePoolSchema.parse(JSON.parse(await readFile(resolve(configDir,"candidates.json"),"utf8")));}
   catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;}const worker=new Worker(service);await worker.recover();
-  await new ToolGateway(service,new ToolRegistry().register(publicPageTool)).recover();
+  const search=configuredSearch(process.env);service.searchTool=search.tool;service.searchSetup=search.setup;
+  await new ToolGateway(service,runtimeToolRegistry(service)).recover();
   try{
     const reminders=JSON.parse(await readFile(resolve(configDir,"owner-reminders.json"),"utf8")) as {id:string;title:string;details:string}[];
     await db.transaction(async(tx)=>{for(const reminder of reminders){const existing=await tx.query("SELECT id FROM owner_requests WHERE id=$1",[reminder.id]);if(!existing.rows.length){await tx.query("INSERT INTO owner_requests(id,title,details) VALUES($1,$2,$3)",[reminder.id,reminder.title,reminder.details]);await event(tx,"owner.reminder_created",reminder.id,{title:reminder.title},"owner");}}});

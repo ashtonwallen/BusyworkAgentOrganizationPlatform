@@ -46,3 +46,5 @@ export {businessEntityInput,saveBusinessEntity} from './business-entities.js';
 export {proposeOrderEmail} from './order-email.js';
 export {missionTemplates,missionInput,currentMission,createMission,activateMission,approveDepartment} from './missions.js';
 export {confirmMissionCompletion,stopMission,resumeMission,missionExposure,missionProgress} from './mission-lifecycle.js';
+export {configuredSearch,searchTool,BraveSearchProvider} from './web-search.js';
+export {runtimeToolRegistry} from './tools.js';

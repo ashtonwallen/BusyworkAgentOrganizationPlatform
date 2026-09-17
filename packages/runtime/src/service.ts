@@ -1,5 +1,6 @@
 import {instanceSettings} from './instance-settings.js';
 import {currentMission,missionTemplates} from './missions.js';
+import type {ExternalTool} from './tools.js';
 import {orderRegister} from './orders.js';
 import {backlogScheduleStatus} from './backlog-scheduling.js';
 import {consultations} from './consultations.js';
@@ -63,6 +64,8 @@ export async function directionScorecard(tx: Pick<Tx, "query">, since: string | 
 }
 
 export class HiveService {
+  searchTool?:ExternalTool;
+  searchSetup:{available:boolean;provider:string|null;costUsd:string|null;missing:string[]}={available:false,provider:null,costUsd:null,missing:['HIVE_SEARCH_PROVIDER','BRAVE_SEARCH_API_KEY','HIVE_SEARCH_COST_USD']};
   /** People the CEO and its managers can hire. Loaded from config; empty is allowed. */
   candidates: Candidate[] = [];
   emailOAuthConfigured=false;
@@ -284,6 +287,7 @@ export class HiveService {
         emailOAuthConfigured:this.emailOAuthConfigured,
         instance:instanceSettings,
         mission:await currentMission(tx),missionTemplates,
+        searchSetup:this.searchSetup,
         missions:await query('SELECT * FROM missions ORDER BY created_at DESC'),
         emailMailbox:(await query("SELECT address,provider,enabled,daily_send_limit,last_synced_at,error,credential_ciphertext IS NOT NULL AS connected FROM email_mailboxes WHERE address=$1",[instanceSettings.mailbox]))[0]??null,
         emailPermissions:await query("SELECT e.id,e.name,e.role,COALESCE(p.can_read,e.role='CEO') AS can_read,COALESCE(p.can_send,e.role='CEO') AS can_send FROM employees e LEFT JOIN email_permissions p ON p.employee_id=e.id WHERE e.status='ACTIVE'"),
@@ -675,7 +679,7 @@ export class HiveService {
         if (action.result?.execution === 'OWNER_ASSISTED' && action.result.externalReference === input.externalReference && action.result.resultNote === input.resultNote && BigInt(action.settled) === cost) return;
         throw new DomainError('This action already has a different completion record.');
       }
-      if (!['APPROVED','EXPIRED','CANCELLED'].includes(action.status) || ['MODEL_CALL', 'SANDBOX_PURCHASE', 'READ_PUBLIC_PAGE'].includes(action.action_type)) throw new DomainError('Only a previously approved owner-assisted external action can be recorded here.');
+      if (!['APPROVED','EXPIRED','CANCELLED'].includes(action.status) || ['MODEL_CALL', 'SANDBOX_PURCHASE', 'READ_PUBLIC_PAGE', 'SEARCH_WEB'].includes(action.action_type)) throw new DomainError('Only a previously approved owner-assisted external action can be recorded here.');
       const approval = (await tx.query<Row>("SELECT * FROM approvals WHERE action_id=$1", [id])).rows[0];
       if (!approval || approval.decision !== 'APPROVE' || approval.action_hash !== action.action_hash) throw new DomainError('Completion is not bound to an approved proposal.');
       // This records an observed outside transaction; never hide a real overrun or late completion.

@@ -9,14 +9,16 @@ import { DomainError,HiveService } from "./service.js";
 
 export interface ExternalTool {
   name:string;version:number;description:string;approvalCategory:string;maximumCostUsd:string;
+  validate?(target:string,payload:Record<string,unknown>):void;
   execute(input:{target:string;payload:Record<string,unknown>;actionId:string}):Promise<{result:unknown;actualCostUsd:string}>;
 }
 export class ToolRegistry {
   private tools=new Map<string,ExternalTool>();
   register(tool:ExternalTool){if(this.tools.has(tool.name))throw new Error(`Duplicate tool ${tool.name}`);parseUsd(tool.maximumCostUsd);this.tools.set(tool.name,tool);return this;}
   get(name:string){return this.tools.get(name);}
-  list(){return [...this.tools.values()].map(({execute,...tool})=>tool);}
+  list(){return [...this.tools.values()].map(({execute,validate,...tool})=>tool);}
 }
+export function runtimeToolRegistry(service:HiveService){const registry=new ToolRegistry().register(publicPageTool);if(service.searchTool)registry.register(service.searchTool);return registry;}
 export function isPublicAddress(address:string):boolean {
   // The initial public-fetch adapter deliberately supports only IPv4 destinations.
   if(isIP(address)!==4)return false;
@@ -76,11 +78,23 @@ export class ToolGateway {
       const tool=this.registry.get(a.action_type);if(!tool)throw new DomainError('This proposal needs an integration or an owner-assisted completion. No executable tool is installed.');
       if(!['PENDING','APPROVED'].includes(a.status)||new Date(a.expires_at)<=this.service.now())throw new DomainError('Action is not currently executable.');
       if(tool.version!==1)throw new DomainError('Tool version changed; submit a new version-bound proposal.');
+      try{tool.validate?.(a.target,a.payload);}catch{throw new DomainError('Tool request or provider pricing changed; prepare a valid new proposal.');}
       const maximum=parseUsd(tool.maximumCostUsd);if(BigInt(a.max_cost)<maximum)throw new DomainError('Proposal does not cover the tool cost bound.');
       const missionBlocked=await missionAdmission(tx,a.mission_id,BigInt(a.max_cost));
       if(missionBlocked)return {blocked:missionBlocked} as const;
-      // Paid adapters must implement their own typed commercial contract before registration is enabled.
-      if(maximum!==0n||BigInt(a.max_cost)!==0n)throw new DomainError('Only zero-cost research adapters are enabled in the initial tool gateway.');
+      // Only the typed, price-bound search contract enables paid gateway calls.
+      if(tool.name==='SEARCH_WEB'){
+        if(!tool.validate||BigInt(a.max_cost)!==maximum)throw new DomainError('Search must use the exact configured per-query cost.');
+        const exposure=await one(tx,`SELECT
+         ((SELECT COALESCE(sum(amount),0) FROM ledger WHERE kind='COST' AND account<>'TEST' AND occurred_at::date=$1::date)+
+          (SELECT COALESCE(sum(reserved),0) FROM calls WHERE status IN ('RESERVED','DISPATCHED','UNCERTAIN'))+
+          (SELECT COALESCE(sum(reservation),0) FROM actions)+
+          (SELECT COALESCE(sum(reserved),0) FROM notifications WHERE settled IS NULL))::text AS daily,
+         ((SELECT COALESCE(sum(COALESCE(settled,0)+CASE WHEN status IN ('RESERVED','DISPATCHED','UNCERTAIN') THEN reserved ELSE 0 END),0) FROM calls WHERE is_live)+
+          (SELECT COALESCE(sum(COALESCE(settled,0)+reservation),0) FROM actions WHERE action_type='SEARCH_WEB'))::text AS lifetime`,[this.service.now().toISOString().slice(0,10)]);
+        if(BigInt(exposure.daily)+maximum>BigInt(c.daily_cap))throw new DomainError('Daily cap cannot cover this search.');
+        if(maximum>0n&&BigInt(exposure.lifetime)+maximum>BigInt(c.live_cap))throw new DomainError('Lifetime paid cap cannot cover this search.');
+      }else if(maximum!==0n||BigInt(a.max_cost)!==0n)throw new DomainError('This gateway adapter is restricted to zero cost.');
       if(a.task_id){const task=await one(tx,"SELECT * FROM tasks WHERE id=$1",[a.task_id]);if(['CANCELLED','EXPIRED'].includes(task.status)||new Date(task.expires_at)<=this.service.now())throw new DomainError('Source task has expired or been cancelled.');}
       let grantId:string|null=null;
       if(a.status==='APPROVED'){

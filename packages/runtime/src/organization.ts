@@ -438,6 +438,16 @@ Your current operating direction: ${current.headline}. ${current.statement}`,
           } else if (operation.type === 'BUSINESS_EMAIL_READ') {
             const emailResult=await readBusinessEmail(tx,sender,operation.target,operation.messageBefore,operation.resultOffset??0);
             await tx.query("INSERT INTO messages(id,sender_id,recipient_id,kind,subject,body,task_id) VALUES($1,'business-email',$2,'DECISION','Email tool result',$3,$4)",[id,sender,JSON.stringify({trust:'UNTRUSTED_EXTERNAL_CONTENT',data:emailResult}),source.id]);await event(tx,'email.read',id,{target:operation.target,before:operation.messageBefore??null,offset:operation.resultOffset??0},sender);
+          } else if(operation.type==='SEARCH_WEB'){
+            const setup=this.service.searchSetup,tool=this.service.searchTool;
+            if(!setup.available||!setup.provider||!setup.costUsd||!tool||!operation.search)throw new DomainError('Configure a search provider and supply search.query before requesting web search.');
+            if(parseUsd(operation.budgetUsd)!==parseUsd(setup.costUsd))throw new DomainError('Use the configured per-query search cost.');
+            const target=setup.provider+':web-search',payload={...operation.search,provider:setup.provider,version:1,costUsd:setup.costUsd};
+            tool.validate?.(target,payload);
+            const expiresAt=new Date(source.expires_at).toISOString();
+            const hash=actionHash({id,taskId:source.id,actionType:'SEARCH_WEB',target,payload,rationale:operation.instructions,maxCostUsd:setup.costUsd,expiresAt,executorVersion:1});
+            await tx.query("INSERT INTO actions(id,task_id,action_type,target,payload,rationale,max_cost,expires_at,action_hash,status) VALUES($1,$2,'SEARCH_WEB',$3,$4,$5,$6,$7,$8,'PENDING')",[id,source.id,target,JSON.stringify(payload),operation.instructions,parseUsd(setup.costUsd).toString(),expiresAt,hash]);
+            await event(tx,'action.proposed',id,{actionType:'SEARCH_WEB',target,hash,maxCostUsd:setup.costUsd},sender);await this.service.queueNotification(tx,id);
           } else if (operation.type === 'PROPOSE_EXTERNAL'  || ['READ_PUBLIC_PAGE','READ_BROWSER_PAGE'].includes(operation.type)) {
             const experimentId=operation.experimentId ?? null;
             if(experimentId){
