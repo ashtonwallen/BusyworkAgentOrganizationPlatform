@@ -27,3 +27,19 @@ config/*.json
 !config/models.registry.example.json
 *.local.json
 recordings/
+# added 2026-10-09 (projects cleanup)
+*.key
+*.pem
+.venv/
+venv/
+__pycache__/
+*.gguf
+*.safetensors
+*.onnx
+*.ckpt
+*.pt
+*.pth
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.exe
